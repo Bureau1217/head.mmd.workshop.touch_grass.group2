@@ -22,6 +22,7 @@
         :image-filter="imageFilter"
         :attack-log="attackLog"
         :latest-attack="latestAttack"
+        :active-dwells-list="activeDwellsList"
         :is-totally-broken="isTotallyBroken"
         :critical-satellite-limit="criticalSatelliteLimit"
         :is-healed="isHealed"
@@ -65,13 +66,14 @@ const {
   imageFilter,
   attackLog,
   latestAttack,
+  activeDwellsList,
   isTotallyBroken,
   criticalSatelliteLimit,
   isHealed,
   healedBySatName,
   isLoading: isWikiLoading,
   fetchArticleForSatellite
-} = useWikipedia(closestScientific, newlyEnteredCommercialSats);
+} = useWikipedia(closestScientific, commercialSatsInZone);
 
 // "Tester un saut": picks another scientific satellite to test page change / healing!
 const handleTestJump = () => {

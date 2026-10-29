@@ -13,8 +13,9 @@ export function crossWord(input: string, force: number = 1, threshold: number = 
     return input;
   }
 
+  // Very gradual probability: starts at ~5% of words on Force 1, scaling gently up
   const excess = force - threshold + 1;
-  const strikeProbability = Math.min(0.8, 0.2 + excess * 0.15);
+  const strikeProbability = Math.min(0.85, 0.015 + excess * 0.035);
 
   const tokens = input.split(/(\s+)/);
 
@@ -28,11 +29,7 @@ export function crossWord(input: string, force: number = 1, threshold: number = 
     const rand = pseudoRandom - Math.floor(pseudoRandom);
 
     if (rand < strikeProbability && token.length > 1) {
-      const crossed = token
-        .split('')
-        .map((char) => `${char}\u0336`)
-        .join('');
-      return `<del class="app-wiki-article__strike">${crossed}</del>`;
+      return `<del class="app-wiki-article__strike">${token}</del>`;
     }
 
     return token;

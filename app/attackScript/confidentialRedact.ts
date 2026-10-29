@@ -13,9 +13,9 @@ export function confidentialRedact(input: string, force: number = 1, threshold: 
     return input;
   }
 
-  // Ratio of available plain words to redact on this pass
+  // Very gradual probability: starts at ~5% of words on Force 1, scaling gently up
   const excess = force - threshold + 1;
-  const redactProbability = Math.min(0.8, 0.2 + excess * 0.15);
+  const redactProbability = Math.min(0.85, 0.015 + excess * 0.035);
 
   // Split keeping whitespace and HTML tags intact
   const tokens = input.split(/(\s+)/);
@@ -29,9 +29,8 @@ export function confidentialRedact(input: string, force: number = 1, threshold: 
     const pseudoRandom = Math.sin(index * 733 + force * 29 + token.length) * 10000;
     const rand = pseudoRandom - Math.floor(pseudoRandom);
 
-    if (rand < redactProbability && token.length > 0) {
-      const blackBar = '█'.repeat(token.length);
-      return `<mark class="app-wiki-article__censor" title="REDACTED">${blackBar}</mark>`;
+    if (rand < redactProbability && token.length > 1) {
+      return `<mark class="app-wiki-article__censor" title="REDACTED">${token}</mark>`;
     }
 
     return token;

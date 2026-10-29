@@ -1,6 +1,16 @@
-import { ref, computed, watch, type Ref } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted, type Ref } from 'vue';
 import type { NearestSatellite, SatellitePosition } from '~/types/satellite';
-import { crossWord, confidentialRedact, qualityLossImage, type AttackType, type AttackEvent } from '~/attackScript';
+import {
+  crossWord,
+  confidentialRedact,
+  qualityLossImage,
+  raysImage,
+  raysText,
+  fallingLetters,
+  type AttackType,
+  type AttackEvent,
+  type CommercialSatelliteDwell
+} from '~/attackScript';
 
 interface WikiSearchResponse {
   query?: {
@@ -11,17 +21,18 @@ interface WikiSearchResponse {
   };
 }
 
-const ATTACK_OPTIONS: AttackType[] = ['confidentialRedact', 'crossWord', 'qualityLossImage'];
+const ATTACK_OPTIONS: AttackType[] = [
+  'raysText',
+  'raysImage'
+];
 const DOMAINE = 'fr.wikipedia.org';
 
 // Helper to safely attack only text nodes in HTML without touching markup or tags
 function attackHtmlText(html: string, attackFn: (text: string, force: number) => string, force: number): string {
-  // Regex matches either HTML tags <...> or raw text between tags
   return html.replace(/(<[^>]+>)|([^<]+)/g, (match, tag, text) => {
     if (tag) {
       return tag;
     }
-    // If the text has alphanumeric content, attack it
     if (/[a-zA-Z0-9\u00C0-\u017F]/.test(text)) {
       return attackFn(text, force);
     }
@@ -40,9 +51,38 @@ function attackHtmlImages(html: string, force: number): string {
   });
 }
 
+/**
+ * ============================================================================
+ * PARAMÈTRE D'AUGMENTATION DE FORCE PAR DURÉE (FORCE DWELL INTERVAL)
+ * ============================================================================
+ * Définit l'intervalle en secondes pour que la force d'interférence monte de +1.
+ * Réglé exactement sur 10 secondes :
+ *
+ *   0s à 9s   : Force 0 (Approche / Détection du satellite, aucun dégât)
+ *   10s à 19s : Force 1 (+1)
+ *   20s à 29s : Force 2 (+1)
+ *   30s à 39s : Force 3 (+1)
+ *   40s à 49s : Force 4 (+1)
+ *   50s à 59s : Force 5 (+1)
+ *   60s à 69s : Force 6 (+1)
+ *   70s à 79s : Force 7 (+1)
+ *   80s à 89s : Force 8 (+1)
+ *   90s à 99s : Force 9 (+1)
+ *   100s et + : Force 10 (Maximum / Rupture critique)
+ */
+export const FORCE_INCREASE_INTERVAL_SECONDS = 10;
+export const MAX_FORCE_LEVEL = 10;
+
+export function calculateDwellForce(dwellSeconds: number): number {
+  if (dwellSeconds <= 0) return 0;
+  // Force 1 triggers immediately on presence in zone (1s - 9s)
+  // Force escalates by +1 every 10 seconds of presence (10s: Force 2, 20s: Force 3, ...)
+  return Math.min(MAX_FORCE_LEVEL, 1 + Math.floor(dwellSeconds / FORCE_INCREASE_INTERVAL_SECONDS));
+}
+
 export const useWikipedia = (
   closestScientific: Ref<NearestSatellite | null>,
-  newlyEnteredCommercialSats: Ref<SatellitePosition[]>
+  commercialSatsInZone: Ref<SatellitePosition[]>
 ) => {
   const currentTitle = ref<string>('Satellite_artificiel');
   const urlCadre = ref<string>(`https://${DOMAINE}/wiki/Satellite_artificiel`);
@@ -61,10 +101,20 @@ export const useWikipedia = (
   const attackLog = ref<AttackEvent[]>([]);
   const latestAttack = ref<AttackEvent | null>(null);
 
+  // Track each commercial satellite's presence duration and attack level since the last Wikipedia change
+  const activeDwells = ref<Record<string, CommercialSatelliteDwell>>({});
+
+  const activeDwellsList = computed<CommercialSatelliteDwell[]>(() => {
+    return Object.values(activeDwells.value).sort((a, b) => b.dwellSeconds - a.dwellSeconds);
+  });
+
   // Individual attack force counters
   const forceConfidential = ref<number>(0);
   const forceCrossWord = ref<number>(0);
   const forceImage = ref<number>(0);
+  const forceRays = ref<number>(0);
+  const forceRaysText = ref<number>(0);
+  const forceFallingLetters = ref<number>(0);
 
   // Healing tracking
   const isHealed = ref<boolean>(false);
@@ -73,7 +123,12 @@ export const useWikipedia = (
   const previousArticleTitle = ref<string>('');
 
   const isTotallyBroken = computed<boolean>(() => {
-    return attackLog.value.length >= criticalSatelliteLimit.value;
+    const list = Object.values(activeDwells.value);
+    if (list.length === 0) return false;
+    const sumForces = list.reduce((acc, cur) => acc + cur.force, 0);
+    // Only breaks if multiple satellites combine to 20+ force (sustained heavy interference)
+    // or any satellite reaches maximum Force 10 (stays in the zone for over 145s)
+    return sumForces >= 20 || list.some((d) => d.force >= 10);
   });
 
   // French mappings for satellite mission purposes
@@ -110,11 +165,15 @@ export const useWikipedia = (
   };
 
   const resetPageAttacks = () => {
+    activeDwells.value = {};
     attackLog.value = [];
     latestAttack.value = null;
     forceConfidential.value = 0;
     forceCrossWord.value = 0;
     forceImage.value = 0;
+    forceRays.value = 0;
+    forceRaysText.value = 0;
+    forceFallingLetters.value = 0;
     imageFilter.value = 'none';
     attackedHtml.value = cleanHtml.value;
   };
@@ -146,7 +205,6 @@ export const useWikipedia = (
         resetPageAttacks();
       } else if (satChanged || !cleanHtml.value) {
         // Different scientific purpose / page: load new page fresh and clean
-        // Commercial satellites already inside the zone do NOT attack because they did not just enter
         isHealed.value = false;
         healedBySatName.value = null;
 
@@ -178,74 +236,118 @@ export const useWikipedia = (
     { immediate: true }
   );
 
-  // Attack trigger: executes ONLY when a commercial satellite ENTERS the zone!
-  // Once attacked, damage is NOT removed when the satellite leaves the zone.
-  watch(
-    () => newlyEnteredCommercialSats.value,
-    (enteredSats) => {
-      if (!enteredSats || enteredSats.length === 0 || !cleanHtml.value) {
-        return;
-      }
+  // Periodic dwell timer: every 1 second, track duration of commercial satellites in zone
+  // The longer they stay in the zone, the more their attack force escalates!
+  let dwellTimer: ReturnType<typeof setInterval> | null = null;
 
-      // If page was previously healed, new enter events resume attacks
-      if (isHealed.value) {
-        isHealed.value = false;
-        healedBySatName.value = null;
-      }
+  const tickDwellTimes = () => {
+    if (!cleanHtml.value || isLoading.value || isTotallyBroken.value) {
+      return;
+    }
 
-      let nextHtml = attackedHtml.value || cleanHtml.value;
+    const currentZoneNames = new Set(commercialSatsInZone.value.map((s) => s.name));
 
-      for (const sat of enteredSats) {
-        if (isTotallyBroken.value) {
-          break;
+    // 1. Process commercial satellites currently inside the zone
+    for (const sat of commercialSatsInZone.value) {
+      let entry = activeDwells.value[sat.name];
+
+      if (!entry) {
+        // Balance attack types so both text and images are attacked when multiple satellites are present
+        const existingEntries = Object.values(activeDwells.value);
+        const countText = existingEntries.filter((e) => e.attackType === 'raysText').length;
+        const countImage = existingEntries.filter((e) => e.attackType === 'raysImage').length;
+
+        let chosenAttack: AttackType;
+        if (countText < countImage) {
+          chosenAttack = 'raysText';
+        } else if (countImage < countText) {
+          chosenAttack = 'raysImage';
+        } else {
+          chosenAttack = ATTACK_OPTIONS[Math.floor(Math.random() * ATTACK_OPTIONS.length)];
         }
 
-        // Randomly choose attack for this entering satellite
-        const chosenAttack = ATTACK_OPTIONS[Math.floor(Math.random() * ATTACK_OPTIONS.length)];
-
-        let currentForce = 1;
-
-        if (chosenAttack === 'confidentialRedact') {
-          forceConfidential.value++;
-          currentForce = forceConfidential.value;
-          nextHtml = attackHtmlText(nextHtml, confidentialRedact, forceConfidential.value);
-        } else if (chosenAttack === 'crossWord') {
-          forceCrossWord.value++;
-          currentForce = forceCrossWord.value;
-          nextHtml = attackHtmlText(nextHtml, crossWord, forceCrossWord.value);
-        } else if (chosenAttack === 'qualityLossImage') {
-          forceImage.value++;
-          currentForce = forceImage.value;
-          nextHtml = attackHtmlImages(nextHtml, forceImage.value);
-          imageFilter.value = qualityLossImage('', forceImage.value);
-        }
-
-        const attackEvt: AttackEvent = {
-          satelliteName: sat.name,
+        entry = {
+          name: sat.name,
           attackType: chosenAttack,
-          force: currentForce,
+          dwellSeconds: 1,
+          force: 0,
+          inZone: true,
+          distanceKm: sat.distance,
+          firstSeenAt: new Date()
+        };
+        activeDwells.value[sat.name] = entry;
+      } else {
+        entry.inZone = true;
+        entry.distanceKm = sat.distance;
+        entry.dwellSeconds += 1;
+      }
+
+      // Check if progressive dwell time unlocks higher attack force
+      const calculatedForce = calculateDwellForce(entry.dwellSeconds);
+
+      if (calculatedForce > entry.force) {
+        entry.force = calculatedForce;
+
+        if (isHealed.value) {
+          isHealed.value = false;
+          healedBySatName.value = null;
+        }
+
+        const evt: AttackEvent = {
+          satelliteName: sat.name,
+          attackType: entry.attackType,
+          force: calculatedForce,
           timestamp: new Date()
         };
 
-        attackLog.value.push(attackEvt);
-        latestAttack.value = attackEvt;
+        const existingIdx = attackLog.value.findIndex((a) => a.satelliteName === sat.name);
+        if (existingIdx >= 0) {
+          attackLog.value[existingIdx] = evt;
+        } else {
+          attackLog.value.push(evt);
+        }
+        latestAttack.value = evt;
 
-        // If total attacks now reaches the critical breakdown threshold:
-        if (attackLog.value.length >= criticalSatelliteLimit.value) {
-          // Total breakdown: blackout all text and blur all images
-          nextHtml = attackHtmlText(cleanHtml.value, (t) => {
-            return t.split(' ').map((w) => `<mark class="app-wiki-article__censor">${'█'.repeat(Math.max(3, w.length))}</mark>`).join(' ');
-          }, 5);
-          nextHtml = attackHtmlImages(nextHtml, 5);
-          imageFilter.value = 'blur(28px) contrast(20%) brightness(20%) grayscale(100%)';
-          break;
+        if (entry.attackType === 'confidentialRedact') {
+          forceConfidential.value = Math.max(forceConfidential.value, calculatedForce);
+          attackedHtml.value = attackHtmlText(cleanHtml.value, confidentialRedact, forceConfidential.value);
+        } else if (entry.attackType === 'crossWord') {
+          forceCrossWord.value = Math.max(forceCrossWord.value, calculatedForce);
+          attackedHtml.value = attackHtmlText(cleanHtml.value, crossWord, forceCrossWord.value);
+        } else if (entry.attackType === 'qualityLossImage') {
+          forceImage.value = Math.max(forceImage.value, calculatedForce);
+          imageFilter.value = qualityLossImage('', forceImage.value);
+          attackedHtml.value = attackHtmlImages(cleanHtml.value, forceImage.value);
+        } else if (entry.attackType === 'raysImage') {
+          forceRays.value = Math.max(forceRays.value, calculatedForce);
+        } else if (entry.attackType === 'raysText') {
+          forceRaysText.value = Math.max(forceRaysText.value, calculatedForce);
+          attackedHtml.value = attackHtmlText(cleanHtml.value, raysText, forceRaysText.value);
+        } else if (entry.attackType === 'fallingLetters') {
+          forceFallingLetters.value = Math.max(forceFallingLetters.value, calculatedForce);
+          attackedHtml.value = attackHtmlText(cleanHtml.value, fallingLetters, forceFallingLetters.value);
         }
       }
+    }
 
-      attackedHtml.value = nextHtml;
-    },
-    { deep: true }
-  );
+    // 2. Mark satellites that have exited the zone (dwell stops incrementing, but attack remains!)
+    for (const [satName, entry] of Object.entries(activeDwells.value)) {
+      if (!currentZoneNames.has(satName)) {
+        entry.inZone = false;
+      }
+    }
+  };
+
+  onMounted(() => {
+    dwellTimer = setInterval(tickDwellTimes, 1000);
+  });
+
+  onUnmounted(() => {
+    if (dwellTimer) {
+      clearInterval(dwellTimer);
+      dwellTimer = null;
+    }
+  });
 
   return {
     currentTitle,
@@ -256,6 +358,8 @@ export const useWikipedia = (
     imageFilter,
     attackLog,
     latestAttack,
+    activeDwells,
+    activeDwellsList,
     isTotallyBroken,
     criticalSatelliteLimit,
     isHealed,
