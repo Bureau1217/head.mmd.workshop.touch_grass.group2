@@ -2,5 +2,10 @@
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: true },
-  css: ['~/assets/_main.scss']
+  css: ['~/assets/_main.scss'],
+  runtimeConfig: {
+    public: {
+      apiKey: process.env.API_KEY || ''
+    }
+  }
 })
