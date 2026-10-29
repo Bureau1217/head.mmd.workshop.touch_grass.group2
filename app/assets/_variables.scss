@@ -1,0 +1,61 @@
+// Clean, minimal SCSS variables for Touch Grass
+
+// Brand & Workshop Colors (from _a-params.scss)
+$color-primary: #FF00A6;
+$color-secondary: #FF8100;
+$color-tertiary: #9673F0;
+$color-quaternary: #26FF00;
+$color-white: #FFFFFF;
+$color-black: #111111;
+
+// Neutrals
+$color-bg: #FFFFFF;
+$color-surface: #F8F9FA;
+$color-surface-hover: #F1F3F5;
+$color-border: #E5E7EB;
+$color-border-dark: #111111;
+$color-text: #111111;
+$color-text-muted: #666666;
+$color-text-faint: #999999;
+
+// Status colors
+$color-scientific: #111111;
+$color-commercial: #FF8100;
+$color-interference: #FF00A6;
+
+// Typography
+$font-sans: 'Geist', system-ui, -apple-system, sans-serif;
+$font-mono: 'Geist Mono', monospace;
+$font-serif: 'Times New Roman', Times, Georgia, serif;
+
+$font-size-xs: 0.75rem;
+$font-size-sm: 0.875rem;
+$font-size-base: 1rem;
+$font-size-md: 1.125rem;
+$font-size-lg: 1.25rem;
+$font-size-xl: 1.5rem;
+$font-size-2xl: 2.25rem;
+$font-size-3xl: 3rem;
+
+// Spacing
+$spacing-xs: 0.25rem;
+$spacing-sm: 0.5rem;
+$spacing-md: 1rem;
+$spacing-lg: 1.5rem;
+$spacing-xl: 2rem;
+$spacing-2xl: 3rem;
+
+// Breakpoints
+$breakpoint-sm: 640px;
+$breakpoint-md: 768px;
+$breakpoint-lg: 1024px;
+
+// Border radii
+$radius-none: 0;
+$radius-sm: 2px;
+$radius-md: 4px;
+$radius-full: 9999px;
+
+// Transitions
+$transition-fast: 150ms ease;
+$transition-base: 250ms ease;

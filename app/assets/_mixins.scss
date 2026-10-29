@@ -1,0 +1,28 @@
+@use "variables" as *;
+
+// Glassmorphism card surface
+@mixin glass-panel {
+  background: rgba($color-surface-dark, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid $color-border;
+  border-radius: $radius-lg;
+}
+
+// Glow effect
+@mixin neon-glow($color, $spread: 8px) {
+  box-shadow: 0 0 $spread rgba($color, 0.5), inset 0 0 ($spread / 2) rgba($color, 0.3);
+}
+
+// Media query mixin
+@mixin respond-to($breakpoint) {
+  @if $breakpoint == 'sm' {
+    @media (min-width: $breakpoint-sm) { @content; }
+  } @else if $breakpoint == 'md' {
+    @media (min-width: $breakpoint-md) { @content; }
+  } @else if $breakpoint == 'lg' {
+    @media (min-width: $breakpoint-lg) { @content; }
+  } @else if $breakpoint == 'xl' {
+    @media (min-width: $breakpoint-xl) { @content; }
+  }
+}

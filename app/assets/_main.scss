@@ -1,6 +1,7 @@
 @use "a-params";
 @use "b-font-loader";
 @use "c-grid";
+@use "variables" as *;
 
 *,
 *::before,
@@ -10,5 +11,9 @@
 
 body {
   margin: 0;
-  font-family: system-ui, sans-serif;
+  font-family: $font-sans;
+  background-color: $color-bg;
+  color: $color-text;
+  -webkit-font-smoothing: antialiased;
+  min-height: 100vh;
 }
