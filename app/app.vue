@@ -10,53 +10,25 @@
       :visible-count="visibleSatellites.length"
     />
 
-    <!-- Main Content Area -->
+    <!-- Main Content: Full-page Wikipedia iframe layout with real orbital logic -->
     <main class="app-main">
-      <div class="app-main__container">
-        <!-- Minimal Satellite Status Box -->
-        <div class="app-main__status-box">
-          <div class="app-main__status-line">
-            <span class="app-main__status-label">Nearest Scientific:</span>
-            <span v-if="closestScientific" class="app-main__status-val">
-              {{ closestScientific.name }} ({{ closestScientific.purpose }}) — {{ closestScientific.distance }} km away
-            </span>
-            <span v-else class="app-main__status-val app-main__status-val--muted">
-              None above horizon
-            </span>
-          </div>
-
-          <div class="app-main__status-line">
-            <span class="app-main__status-label">Attack Zone ({{ attackZoneRangeKm }} km):</span>
-            <span v-if="isTotallyBroken" class="app-main__status-val app-main__status-val--broken">
-              🚨 {{ attackLog.length }}/{{ criticalSatelliteLimit }} Attacks — CRITICAL BREAKDOWN: Transmission Collapsed
-            </span>
-            <span v-else-if="attackLog.length > 0" class="app-main__status-val app-main__status-val--alert">
-              ⚠️ {{ attackLog.length }} attacks recorded — In zone right now: {{ commercialSatsInZone.length }} (Damage persists until healed)
-            </span>
-            <span v-else-if="commercialSatsInZone.length > 0" class="app-main__status-val app-main__status-val--muted">
-              {{ commercialSatsInZone.length }} commercial in zone (no enter events on this page yet)
-            </span>
-            <span v-else class="app-main__status-val app-main__status-val--muted">
-              Zone clear. No attacks recorded.
-            </span>
-          </div>
-        </div>
-
-        <!-- Wikipedia Article on Satellite Purpose with Persistent Attacks & Healing -->
-        <AppWikiArticle
-          :closest-scientific="closestScientific"
-          :article="currentArticle"
-          :interfered-extract="interferedExtract"
-          :image-filter="imageFilter"
-          :attack-log="attackLog"
-          :is-totally-broken="isTotallyBroken"
-          :critical-satellite-limit="criticalSatelliteLimit"
-          :attack-zone-range-km="attackZoneRangeKm"
-          :is-healed="isHealed"
-          :healed-by-sat-name="healedBySatName"
-          :is-loading="isWikiLoading"
-        />
-      </div>
+      <AppWikiArticle
+        :closest-scientific="closestScientific"
+        :current-title="currentTitle"
+        :url-cadre="urlCadre"
+        :url-ouvrir="urlOuvrir"
+        :clean-html="cleanHtml"
+        :attacked-html="attackedHtml"
+        :image-filter="imageFilter"
+        :attack-log="attackLog"
+        :latest-attack="latestAttack"
+        :is-totally-broken="isTotallyBroken"
+        :critical-satellite-limit="criticalSatelliteLimit"
+        :is-healed="isHealed"
+        :healed-by-sat-name="healedBySatName"
+        :is-loading="isWikiLoading"
+        @test-jump="handleTestJump"
+      />
     </main>
   </div>
 </template>
@@ -78,23 +50,45 @@ const {
   visibleSatellites,
   commercialSatsInZone,
   newlyEnteredCommercialSats,
-  attackZoneRangeKm,
+  cachedSats,
   startTracking,
   stopTracking
 } = useSatellites(userLat, userLon, deviceAzimuth);
 
-// 3. Wikipedia article with enter-event attacks, persistence, and healing
+// 3. Wikipedia article logic with iframe layout, text/image attacks & healing
 const {
-  currentArticle,
-  interferedExtract,
+  currentTitle,
+  urlCadre,
+  urlOuvrir,
+  cleanHtml,
+  attackedHtml,
   imageFilter,
   attackLog,
+  latestAttack,
   isTotallyBroken,
   criticalSatelliteLimit,
   isHealed,
   healedBySatName,
-  isLoading: isWikiLoading
+  isLoading: isWikiLoading,
+  fetchArticleForSatellite
 } = useWikipedia(closestScientific, newlyEnteredCommercialSats);
+
+// "Tester un saut": picks another scientific satellite to test page change / healing!
+const handleTestJump = () => {
+  const sciSats = cachedSats.value.filter((s) => s.type === 'scientific');
+  if (sciSats.length > 1) {
+    const randomSat = sciSats[Math.floor(Math.random() * sciSats.length)];
+    closestScientific.value = {
+      name: randomSat.name,
+      type: 'scientific',
+      purpose: randomSat.purpose,
+      country: randomSat.country,
+      distance: Math.round(500 + Math.random() * 600),
+      azimuth: Math.round(Math.random() * 360),
+      elevation: Math.round(20 + Math.random() * 70)
+    };
+  }
+};
 
 onMounted(() => {
   startTracking();
@@ -109,60 +103,20 @@ onUnmounted(() => {
 @use "~/assets/variables" as *;
 
 .app-root {
-  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
   background-color: $color-bg;
   color: $color-text;
 }
 
 .app-main {
-  padding: $spacing-lg $spacing-md;
-
-  &__container {
-    max-width: 820px;
-    margin: 0 auto;
-    display: flex;
-    flex-direction: column;
-    gap: $spacing-lg;
-  }
-
-  &__status-box {
-    background: $color-surface;
-    border: 1px solid $color-border;
-    padding: $spacing-md;
-    font-family: $font-mono;
-    font-size: $font-size-xs;
-    display: flex;
-    flex-direction: column;
-    gap: $spacing-xs;
-  }
-
-  &__status-line {
-    display: flex;
-    flex-wrap: wrap;
-    gap: $spacing-xs;
-  }
-
-  &__status-label {
-    color: $color-text-muted;
-    font-weight: 700;
-  }
-
-  &__status-val {
-    color: $color-text;
-
-    &--alert {
-      color: $color-commercial;
-      font-weight: 600;
-    }
-
-    &--broken {
-      color: $color-primary;
-      font-weight: 700;
-    }
-
-    &--muted {
-      color: $color-text-faint;
-    }
-  }
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 54px);
+  overflow: hidden;
 }
 </style>

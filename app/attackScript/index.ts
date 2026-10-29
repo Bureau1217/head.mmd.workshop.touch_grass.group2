@@ -7,5 +7,6 @@ export type AttackType = 'crossWord' | 'confidentialRedact' | 'qualityLossImage'
 export interface AttackEvent {
   satelliteName: string;
   attackType: AttackType;
+  force?: number;
   timestamp: Date;
 }

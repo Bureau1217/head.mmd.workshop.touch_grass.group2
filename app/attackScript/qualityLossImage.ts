@@ -8,9 +8,9 @@
  * @param threshold - The minimum force required to trigger the attack (default: 1)
  * @returns The CSS filter string
  */
-export function qualityLossImage(input: string, force: number = 1, threshold: number = 1): string {
-  if (!input || force < threshold) {
-    return 'none';
+export function qualityLossImage(input: string = '', force: number = 1, threshold: number = 1): string {
+  if (force < threshold) {
+    return input || 'none';
   }
 
   const excess = force - threshold + 1;
@@ -20,7 +20,18 @@ export function qualityLossImage(input: string, force: number = 1, threshold: nu
   const saturatePct = Math.max(10, 100 - excess * 25);
   const brightnessPct = Math.max(40, 100 - excess * 12);
 
-  return `blur(${blurPx}px) contrast(${contrastPct}%) saturate(${saturatePct}%) brightness(${brightnessPct}%)`;
+  const filter = `blur(${blurPx}px) contrast(${contrastPct}%) saturate(${saturatePct}%) brightness(${brightnessPct}%)`;
+
+  if (!input || input === 'none') {
+    return filter;
+  }
+
+  // If input is an existing style string, replace or append filter
+  if (/filter\s*:/i.test(input)) {
+    return input.replace(/filter\s*:\s*[^;]+;?/i, `filter: ${filter} !important;`);
+  }
+
+  return `${input.trim().replace(/;?$/, ';')} filter: ${filter} !important;`;
 }
 
 export default qualityLossImage;

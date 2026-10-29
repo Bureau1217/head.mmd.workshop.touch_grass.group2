@@ -1,22 +1,6 @@
 import { ref, computed, watch, type Ref } from 'vue';
 import type { NearestSatellite, SatellitePosition } from '~/types/satellite';
-import type { WikipediaArticle } from '~/types/wikipedia';
 import { crossWord, confidentialRedact, qualityLossImage, type AttackType, type AttackEvent } from '~/attackScript';
-
-interface WikiSummaryResponse {
-  title?: string;
-  displaytitle?: string;
-  extract?: string;
-  thumbnail?: {
-    source?: string;
-  };
-  content_urls?: {
-    desktop?: {
-      page?: string;
-    };
-  };
-  description?: string;
-}
 
 interface WikiSearchResponse {
   query?: {
@@ -28,23 +12,54 @@ interface WikiSearchResponse {
 }
 
 const ATTACK_OPTIONS: AttackType[] = ['confidentialRedact', 'crossWord', 'qualityLossImage'];
+const DOMAINE = 'fr.wikipedia.org';
+
+// Helper to safely attack only text nodes in HTML without touching markup or tags
+function attackHtmlText(html: string, attackFn: (text: string, force: number) => string, force: number): string {
+  // Regex matches either HTML tags <...> or raw text between tags
+  return html.replace(/(<[^>]+>)|([^<]+)/g, (match, tag, text) => {
+    if (tag) {
+      return tag;
+    }
+    // If the text has alphanumeric content, attack it
+    if (/[a-zA-Z0-9\u00C0-\u017F]/.test(text)) {
+      return attackFn(text, force);
+    }
+    return text;
+  });
+}
+
+// Helper to apply qualityLossImage filter to all <img> elements in HTML
+function attackHtmlImages(html: string, force: number): string {
+  const filter = qualityLossImage('', force);
+  return html.replace(/<img\b([^>]*)>/gi, (match, attrs) => {
+    if (/style=["']/i.test(attrs)) {
+      return `<img ${attrs.replace(/style=["']([^"']*)["']/i, `style="$1; filter: ${filter};"`)}>`;
+    }
+    return `<img style="filter: ${filter};" ${attrs}>`;
+  });
+}
 
 export const useWikipedia = (
   closestScientific: Ref<NearestSatellite | null>,
   newlyEnteredCommercialSats: Ref<SatellitePosition[]>
 ) => {
-  const currentArticle = ref<WikipediaArticle | null>(null);
-  const cleanExtract = ref<string>('');
-  const interferedExtract = ref<string>('');
+  const currentTitle = ref<string>('Satellite_artificiel');
+  const urlCadre = ref<string>(`https://${DOMAINE}/wiki/Satellite_artificiel`);
+  const urlOuvrir = ref<string>(`https://${DOMAINE}/wiki/Satellite_artificiel`);
+
+  const cleanHtml = ref<string>('');
+  const attackedHtml = ref<string>('');
   const imageFilter = ref<string>('none');
   const isLoading = ref<boolean>(false);
   const fetchError = ref<string | null>(null);
 
-  // Critical breakdown limit: number of cumulative attacks on this page that totally breaks it
+  // Critical breakdown limit
   const criticalSatelliteLimit = ref<number>(5);
 
   // History of attacks executed on the current page (persists even when satellites leave)
   const attackLog = ref<AttackEvent[]>([]);
+  const latestAttack = ref<AttackEvent | null>(null);
 
   // Individual attack force counters
   const forceConfidential = ref<number>(0);
@@ -61,28 +76,29 @@ export const useWikipedia = (
     return attackLog.value.length >= criticalSatelliteLimit.value;
   });
 
-  // Fallback mappings for satellite purposes
-  const PURPOSE_MAP: Record<string, string> = {
-    'earth observation': 'Earth observation satellite',
-    'meteorology': 'Weather satellite',
-    'meteorological': 'Weather satellite',
-    'science': 'Scientific satellite',
-    'astronomy': 'Space telescope',
-    'astrophysics': 'Space telescope',
-    'geodesy': 'Satellite geodesy',
-    'navigation': 'Satellite navigation',
-    'solar': 'Solar observation',
-    'space weather': 'Space weather',
-    'climate': 'Climate monitoring',
-    'oceanography': 'Ocean surface topography'
+  // French mappings for satellite mission purposes
+  const PURPOSE_MAP_FR: Record<string, string> = {
+    'earth observation': 'Satellite d\'observation de la Terre',
+    'meteorology': 'Satellite météorologique',
+    'meteorological': 'Satellite météorologique',
+    'science': 'Satellite scientifique',
+    'astronomy': 'Télescope spatial',
+    'astrophysics': 'Astrophysique',
+    'geodesy': 'Géodésie',
+    'navigation': 'Système de positionnement par satellites',
+    'solar': 'Observatoire solaire',
+    'space weather': 'Météorologie de l\'espace',
+    'climate': 'Climatologie',
+    'oceanography': 'Océanographie spatiale',
+    'research': 'Recherche spatiale'
   };
 
   const resolveTargetQuery = (purpose: string, name: string): string => {
     const purposeLower = (purpose || '').toLowerCase();
-    let query = PURPOSE_MAP[purposeLower];
+    let query = PURPOSE_MAP_FR[purposeLower];
 
     if (!query) {
-      for (const [key, mapping] of Object.entries(PURPOSE_MAP)) {
+      for (const [key, mapping] of Object.entries(PURPOSE_MAP_FR)) {
         if (purposeLower.includes(key)) {
           query = mapping;
           break;
@@ -95,11 +111,12 @@ export const useWikipedia = (
 
   const resetPageAttacks = () => {
     attackLog.value = [];
+    latestAttack.value = null;
     forceConfidential.value = 0;
     forceCrossWord.value = 0;
     forceImage.value = 0;
     imageFilter.value = 'none';
-    interferedExtract.value = cleanExtract.value;
+    attackedHtml.value = cleanHtml.value;
   };
 
   const fetchArticleForSatellite = async (sat: NearestSatellite): Promise<void> => {
@@ -109,9 +126,15 @@ export const useWikipedia = (
     try {
       const query = resolveTargetQuery(sat.purpose, sat.name);
 
-      const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&utf8=&format=json&origin=*`;
+      // 1. Search Wikipedia (FR)
+      const searchUrl = `https://${DOMAINE}/w/api.php?format=json&origin=*&action=query&list=search&srnamespace=0&srlimit=10&srsearch=${encodeURIComponent(query)}`;
       const searchRes = await $fetch<WikiSearchResponse>(searchUrl);
-      const targetTitle = searchRes.query?.search?.[0]?.title || 'Earth observation satellite';
+      const targetTitle = searchRes.query?.search?.[0]?.title || 'Satellite artificiel';
+
+      currentTitle.value = targetTitle;
+      const wikiPath = `/wiki/${encodeURIComponent(targetTitle.replace(/ /g, '_'))}`;
+      urlCadre.value = `https://${DOMAINE}${wikiPath}`;
+      urlOuvrir.value = `https://${DOMAINE}${wikiPath}`;
 
       const satChanged = previousSatName.value && previousSatName.value !== sat.name;
       const pageStaysSame = previousArticleTitle.value && previousArticleTitle.value === targetTitle;
@@ -121,26 +144,16 @@ export const useWikipedia = (
         isHealed.value = true;
         healedBySatName.value = sat.name;
         resetPageAttacks();
-      } else if (satChanged || !currentArticle.value) {
-        // Different scientific purpose / page: start fresh and clean!
+      } else if (satChanged || !cleanHtml.value) {
+        // Different scientific purpose / page: load new page fresh and clean
         // Commercial satellites already inside the zone do NOT attack because they did not just enter
         isHealed.value = false;
         healedBySatName.value = null;
 
-        const summaryUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(targetTitle)}`;
-        const summaryData = await $fetch<WikiSummaryResponse>(summaryUrl);
-
-        const text = summaryData.extract || `Article on ${targetTitle}. Satellite purpose: ${sat.purpose}.`;
-        cleanExtract.value = text;
-
-        currentArticle.value = {
-          title: summaryData.title || targetTitle,
-          displayTitle: summaryData.displaytitle || targetTitle,
-          extract: text,
-          thumbnailUrl: summaryData.thumbnail?.source || null,
-          pageUrl: summaryData.content_urls?.desktop?.page || `https://en.wikipedia.org/wiki/${encodeURIComponent(targetTitle)}`,
-          description: summaryData.description || sat.purpose
-        };
+        // Fetch full HTML through our server route
+        const html = await $fetch<string>(`/api/wiki-html?title=${encodeURIComponent(targetTitle)}&lang=fr`);
+        cleanHtml.value = html;
+        attackedHtml.value = html;
 
         resetPageAttacks();
       }
@@ -149,20 +162,7 @@ export const useWikipedia = (
       previousArticleTitle.value = targetTitle;
     } catch (err: unknown) {
       console.warn('[useWikipedia] Error fetching article:', err);
-      fetchError.value = 'Could not load Wikipedia article.';
-
-      const fallbackText = `${sat.name} is a scientific spacecraft dedicated to ${sat.purpose || 'research'}.`;
-      cleanExtract.value = fallbackText;
-      currentArticle.value = {
-        title: sat.purpose || sat.name,
-        displayTitle: sat.purpose || sat.name,
-        extract: fallbackText,
-        thumbnailUrl: null,
-        pageUrl: `https://en.wikipedia.org/wiki/Special:Search?search=${encodeURIComponent(sat.purpose || sat.name)}`,
-        description: sat.purpose
-      };
-      resetPageAttacks();
-      previousSatName.value = sat.name;
+      fetchError.value = 'Impossible de charger l\'article Wikipédia.';
     } finally {
       isLoading.value = false;
     }
@@ -183,7 +183,7 @@ export const useWikipedia = (
   watch(
     () => newlyEnteredCommercialSats.value,
     (enteredSats) => {
-      if (!enteredSats || enteredSats.length === 0 || !currentArticle.value) {
+      if (!enteredSats || enteredSats.length === 0 || !cleanHtml.value) {
         return;
       }
 
@@ -193,52 +193,69 @@ export const useWikipedia = (
         healedBySatName.value = null;
       }
 
+      let nextHtml = attackedHtml.value || cleanHtml.value;
+
       for (const sat of enteredSats) {
-        // If already totally broken, do not add further attacks
         if (isTotallyBroken.value) {
           break;
         }
 
-        // Randomly choose which attack this newly entered satellite launches
+        // Randomly choose attack for this entering satellite
         const chosenAttack = ATTACK_OPTIONS[Math.floor(Math.random() * ATTACK_OPTIONS.length)];
 
-        attackLog.value.push({
-          satelliteName: sat.name,
-          attackType: chosenAttack,
-          timestamp: new Date()
-        });
+        let currentForce = 1;
 
         if (chosenAttack === 'confidentialRedact') {
           forceConfidential.value++;
-          interferedExtract.value = confidentialRedact(interferedExtract.value, forceConfidential.value);
+          currentForce = forceConfidential.value;
+          nextHtml = attackHtmlText(nextHtml, confidentialRedact, forceConfidential.value);
         } else if (chosenAttack === 'crossWord') {
           forceCrossWord.value++;
-          interferedExtract.value = crossWord(interferedExtract.value, forceCrossWord.value);
+          currentForce = forceCrossWord.value;
+          nextHtml = attackHtmlText(nextHtml, crossWord, forceCrossWord.value);
         } else if (chosenAttack === 'qualityLossImage') {
           forceImage.value++;
-          imageFilter.value = qualityLossImage(currentArticle.value?.thumbnailUrl || '', forceImage.value);
+          currentForce = forceImage.value;
+          nextHtml = attackHtmlImages(nextHtml, forceImage.value);
+          imageFilter.value = qualityLossImage('', forceImage.value);
         }
+
+        const attackEvt: AttackEvent = {
+          satelliteName: sat.name,
+          attackType: chosenAttack,
+          force: currentForce,
+          timestamp: new Date()
+        };
+
+        attackLog.value.push(attackEvt);
+        latestAttack.value = attackEvt;
 
         // If total attacks now reaches the critical breakdown threshold:
         if (attackLog.value.length >= criticalSatelliteLimit.value) {
-          // Collapse page completely into full blackout and heavy blur
-          interferedExtract.value = cleanExtract.value
-            .split(' ')
-            .map((w) => `<mark class="app-wiki-article__censor">${'█'.repeat(Math.max(3, w.length))}</mark>`)
-            .join(' ');
+          // Total breakdown: blackout all text and blur all images
+          nextHtml = attackHtmlText(cleanHtml.value, (t) => {
+            return t.split(' ').map((w) => `<mark class="app-wiki-article__censor">${'█'.repeat(Math.max(3, w.length))}</mark>`).join(' ');
+          }, 5);
+          nextHtml = attackHtmlImages(nextHtml, 5);
           imageFilter.value = 'blur(28px) contrast(20%) brightness(20%) grayscale(100%)';
           break;
         }
       }
+
+      attackedHtml.value = nextHtml;
     },
     { deep: true }
   );
 
   return {
-    currentArticle,
-    interferedExtract,
+    currentTitle,
+    urlCadre,
+    urlOuvrir,
+    cleanHtml,
+    attackedHtml,
     imageFilter,
     attackLog,
+    latestAttack,
     isTotallyBroken,
     criticalSatelliteLimit,
     isHealed,
