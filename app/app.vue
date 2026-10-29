@@ -26,23 +26,34 @@
           </div>
 
           <div class="app-main__status-line">
-            <span class="app-main__status-label">Commercial Overhead:</span>
-            <span v-if="closestCommercial" class="app-main__status-val app-main__status-val--alert">
-              ⚠️ {{ closestCommercial.name }} at {{ closestCommercial.distance }} km (azimuth {{ closestCommercial.azimuth }}°, elevation {{ closestCommercial.elevation }}°) — Interfere Active
+            <span class="app-main__status-label">Attack Zone ({{ attackZoneRangeKm }} km):</span>
+            <span v-if="isTotallyBroken" class="app-main__status-val app-main__status-val--broken">
+              🚨 {{ attackLog.length }}/{{ criticalSatelliteLimit }} Attacks — CRITICAL BREAKDOWN: Transmission Collapsed
+            </span>
+            <span v-else-if="attackLog.length > 0" class="app-main__status-val app-main__status-val--alert">
+              ⚠️ {{ attackLog.length }} attacks recorded — In zone right now: {{ commercialSatsInZone.length }} (Damage persists until healed)
+            </span>
+            <span v-else-if="commercialSatsInZone.length > 0" class="app-main__status-val app-main__status-val--muted">
+              {{ commercialSatsInZone.length }} commercial in zone (no enter events on this page yet)
             </span>
             <span v-else class="app-main__status-val app-main__status-val--muted">
-              Sky is clear of commercial satellites.
+              Zone clear. No attacks recorded.
             </span>
           </div>
         </div>
 
-        <!-- Wikipedia Article on Satellite Purpose -->
+        <!-- Wikipedia Article on Satellite Purpose with Persistent Attacks & Healing -->
         <AppWikiArticle
           :closest-scientific="closestScientific"
-          :closest-commercial="closestCommercial"
           :article="currentArticle"
           :interfered-extract="interferedExtract"
-          :is-interfering="isInterfering"
+          :image-filter="imageFilter"
+          :attack-log="attackLog"
+          :is-totally-broken="isTotallyBroken"
+          :critical-satellite-limit="criticalSatelliteLimit"
+          :attack-zone-range-km="attackZoneRangeKm"
+          :is-healed="isHealed"
+          :healed-by-sat-name="healedBySatName"
           :is-loading="isWikiLoading"
         />
       </div>
@@ -60,22 +71,30 @@ const {
   deviceAzimuth
 } = useLocation();
 
-// 2. Satellite orbital propagation
+// 2. Satellite orbital propagation & attack zone tracking
 const {
   closestCommercial,
   closestScientific,
   visibleSatellites,
-  isInterfering,
+  commercialSatsInZone,
+  newlyEnteredCommercialSats,
+  attackZoneRangeKm,
   startTracking,
   stopTracking
 } = useSatellites(userLat, userLon, deviceAzimuth);
 
-// 3. Wikipedia article synced to nearest scientific satellite
+// 3. Wikipedia article with enter-event attacks, persistence, and healing
 const {
   currentArticle,
   interferedExtract,
+  imageFilter,
+  attackLog,
+  isTotallyBroken,
+  criticalSatelliteLimit,
+  isHealed,
+  healedBySatName,
   isLoading: isWikiLoading
-} = useWikipedia(closestScientific, closestCommercial, isInterfering);
+} = useWikipedia(closestScientific, newlyEnteredCommercialSats);
 
 onMounted(() => {
   startTracking();
@@ -134,6 +153,11 @@ onUnmounted(() => {
     &--alert {
       color: $color-commercial;
       font-weight: 600;
+    }
+
+    &--broken {
+      color: $color-primary;
+      font-weight: 700;
     }
 
     &--muted {

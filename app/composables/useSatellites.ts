@@ -11,30 +11,21 @@ export const useSatellites = (
   const closestCommercial = ref<NearestSatellite | null>(null);
   const closestScientific = ref<NearestSatellite | null>(null);
   const visibleSatellites = ref<SatellitePosition[]>([]);
-  const isInterfering = ref<boolean>(false);
   const isLoading = ref<boolean>(false);
   const lastCalculatedAt = ref<Date | null>(null);
 
-  // Measure interference intensity from 0 (none) to 1 (maximum interference)
-  const interferenceIntensity = computed<number>(() => {
-    if (!closestCommercial.value) return 0;
+  // Attack zone: distance range around the user in kilometers
+  const attackZoneRangeKm = ref<number>(1200);
 
-    // Commercial satellites closer than 1500km cause noticeable interference
-    // Closer distance (< 500km) = stronger interference
-    const dist = closestCommercial.value.distance;
-    const distanceFactor = Math.max(0, Math.min(1, (1500 - dist) / 1000));
+  // Commercial satellites currently inside the attack zone
+  const commercialSatsInZone = ref<SatellitePosition[]>([]);
 
-    // Optional compass alignment: if phone points near the commercial satellite's azimuth
-    if (deviceAzimuth && deviceAzimuth.value !== undefined) {
-      const azDiff = Math.abs(deviceAzimuth.value - closestCommercial.value.azimuth);
-      const angleDiff = Math.min(azDiff, 360 - azDiff);
-      // If pointing within 45 degrees of satellite, interference boosts
-      const alignmentBonus = angleDiff < 45 ? (45 - angleDiff) / 45 * 0.3 : 0;
-      return Math.min(1, distanceFactor * 0.7 + alignmentBonus);
-    }
+  // Commercial satellites that have just crossed into the zone during this tick
+  const newlyEnteredCommercialSats = ref<SatellitePosition[]>([]);
 
-    return distanceFactor;
-  });
+  // Internal set of satellites known to be in the zone on the previous tick
+  let knownSatsInZone = new Set<string>();
+  let isFirstCalculation = true;
 
   // Fetch satellite TLE data from server
   const loadSatelliteCatalog = async (): Promise<void> => {
@@ -60,7 +51,7 @@ export const useSatellites = (
     const userLocation = new GroundStation({
       lat: userLat.value as Degrees,
       lon: userLon.value as Degrees,
-      alt: 0.4 as Kilometers // Default ~400m
+      alt: 0.4 as Kilometers
     });
 
     let nearestComm: NearestSatellite | null = null;
@@ -68,11 +59,12 @@ export const useSatellites = (
     let minCommDist = Infinity;
     let minSciDist = Infinity;
 
-    // Fallback if none are above horizon: closest satellite overall
+    // Backup scientific satellite in case none are above 0°
     let backupSci: NearestSatellite | null = null;
     let backupSciDist = Infinity;
 
     const visibleList: SatellitePosition[] = [];
+    const inZoneList: SatellitePosition[] = [];
 
     for (const satData of cachedSats.value) {
       try {
@@ -90,7 +82,7 @@ export const useSatellites = (
         const roundedAz = Math.round(az);
         const roundedEl = Math.round(el);
 
-        // Keep track of backup closest scientific satellite even if below horizon
+        // Keep backup scientific satellite in case none are above 0°
         if (satData.type === 'scientific' && rng < backupSciDist) {
           backupSciDist = rng;
           backupSci = {
@@ -106,7 +98,7 @@ export const useSatellites = (
           };
         }
 
-        // Above the horizon (el > 0)
+        // Above the horizon (elevation > 0)
         if (el > 0) {
           const satPos: SatellitePosition = {
             name: satData.name,
@@ -121,12 +113,18 @@ export const useSatellites = (
 
           visibleList.push(satPos);
 
-          if (satData.type === 'commercial' && rng < minCommDist) {
-            minCommDist = rng;
-            nearestComm = {
-              ...satPos,
-              rawId: satData.id
-            };
+          if (satData.type === 'commercial') {
+            if (rng <= attackZoneRangeKm.value) {
+              inZoneList.push(satPos);
+            }
+
+            if (rng < minCommDist) {
+              minCommDist = rng;
+              nearestComm = {
+                ...satPos,
+                rawId: satData.id
+              };
+            }
           }
 
           if (satData.type === 'scientific' && rng < minSciDist) {
@@ -138,18 +136,34 @@ export const useSatellites = (
           }
         }
       } catch {
-        // Ignore single propagation calculation failure
+        // Ignore single calculation errors
       }
     }
 
-    // Sort visible satellites by elevation (highest in sky first)
+    // Detect ENTER events: satellites in zone now that were not in zone before
+    const enteredThisTick: SatellitePosition[] = [];
+
+    if (isFirstCalculation) {
+      // On first calculation, seed known zone satellites so initial page loads cleanly
+      knownSatsInZone = new Set(inZoneList.map((s) => s.name));
+      isFirstCalculation = false;
+    } else {
+      for (const sat of inZoneList) {
+        if (!knownSatsInZone.has(sat.name)) {
+          enteredThisTick.push(sat);
+        }
+      }
+      // Update known satellites set
+      knownSatsInZone = new Set(inZoneList.map((s) => s.name));
+    }
+
     visibleList.sort((a, b) => b.elevation - a.elevation);
 
     visibleSatellites.value = visibleList;
+    commercialSatsInZone.value = inZoneList;
+    newlyEnteredCommercialSats.value = enteredThisTick;
     closestCommercial.value = nearestComm;
-    // If no scientific satellite is currently above the horizon, use backup closest
     closestScientific.value = nearestSci || backupSci;
-    isInterfering.value = !!nearestComm;
     lastCalculatedAt.value = new Date();
   };
 
@@ -157,17 +171,13 @@ export const useSatellites = (
   let catalogRefreshInterval: ReturnType<typeof setInterval> | null = null;
 
   const startTracking = async () => {
-    // 1. Initial catalog fetch
     await loadSatelliteCatalog();
-    // 2. Initial position calculation
     updatePositions();
 
-    // 3. Recalculate orbits every 3 seconds locally
     if (!trackingInterval) {
       trackingInterval = setInterval(updatePositions, 3000);
     }
 
-    // 4. Refresh satellite catalog hourly
     if (!catalogRefreshInterval) {
       catalogRefreshInterval = setInterval(loadSatelliteCatalog, 60 * 60 * 1000);
     }
@@ -189,8 +199,9 @@ export const useSatellites = (
     closestCommercial,
     closestScientific,
     visibleSatellites,
-    isInterfering,
-    interferenceIntensity,
+    commercialSatsInZone,
+    newlyEnteredCommercialSats,
+    attackZoneRangeKm,
     isLoading,
     lastCalculatedAt,
     loadSatelliteCatalog,

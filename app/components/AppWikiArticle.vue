@@ -1,17 +1,52 @@
 <template>
   <article class="app-wiki-article">
-    <!-- Commercial Interference Notice -->
-    <div
-      v-if="isInterfering && closestCommercial"
-      class="app-wiki-article__interference-notice"
-    >
-      <span class="app-wiki-article__interference-badge">Interference active</span>
-      <p class="app-wiki-article__interference-text">
-        Commercial satellite <strong>{{ closestCommercial.name }}</strong> is passing overhead ({{ closestCommercial.distance }} km away, elevation {{ closestCommercial.elevation }}°). Transmission is disrupted.
+    <!-- Healing Notice (when scientific satellite changed but page remained the same) -->
+    <div v-if="isHealed" class="app-wiki-article__heal-notice">
+      <span class="app-wiki-article__heal-badge">Healed</span>
+      <p class="app-wiki-article__heal-text">
+        Passing scientific satellite <strong>{{ healedBySatName }}</strong> matches the current purpose. The page has been healed and restored.
       </p>
     </div>
 
-    <!-- Active Scientific Satellite Meta Header -->
+    <!-- Totally Broken Notice when critical satellite limit reached -->
+    <div v-else-if="isTotallyBroken" class="app-wiki-article__broken-notice">
+      <div class="app-wiki-article__broken-header">
+        <span class="app-wiki-article__broken-badge">Critical Breakdown</span>
+        <span class="app-wiki-article__broken-counter">{{ attackLog.length }} / {{ criticalSatelliteLimit }} Attacks</span>
+      </div>
+      <p class="app-wiki-article__broken-text">
+        Maximum satellite saturation reached. The signal is totally collapsed: all text is redacted and image is degraded.
+      </p>
+    </div>
+
+    <!-- Active Attacks Breakdown Notice -->
+    <div
+      v-else-if="attackLog.length > 0"
+      class="app-wiki-article__attack-notice"
+    >
+      <div class="app-wiki-article__attack-header">
+        <span class="app-wiki-article__attack-badge">{{ attackLog.length }} {{ attackLog.length === 1 ? 'Attack' : 'Attacks' }} Recorded</span>
+        <span class="app-wiki-article__attack-zone">Zone: {{ attackZoneRangeKm }} km (Damage persists until healed)</span>
+      </div>
+      <div class="app-wiki-article__assignments">
+        <div
+          v-for="(item, idx) in attackLog"
+          :key="`${item.satelliteName}-${idx}`"
+          class="app-wiki-article__assignment-tag"
+        >
+          <span class="app-wiki-article__assignment-sat">{{ item.satelliteName }}</span>
+          <span class="app-wiki-article__assignment-arrow">entered →</span>
+          <span
+            class="app-wiki-article__assignment-type"
+            :class="`app-wiki-article__assignment-type--${item.attackType}`"
+          >
+            {{ formatAttackName(item.attackType) }}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Scientific Satellite Meta Header -->
     <div v-if="closestScientific" class="app-wiki-article__satellite-meta">
       <div class="app-wiki-article__meta-row">
         <span class="app-wiki-article__meta-label">Nearest Scientific Satellite</span>
@@ -46,21 +81,22 @@
       </header>
 
       <div class="app-wiki-article__content-wrapper">
+        <!-- Thumbnail image with persistent qualityLossImage filter -->
         <div v-if="article.thumbnailUrl" class="app-wiki-article__media">
           <img
             :src="article.thumbnailUrl"
             :alt="article.title"
+            :style="{ filter: imageFilter }"
             class="app-wiki-article__image"
           />
         </div>
 
+        <!-- Main text with persistent confidentialRedact and crossWord attacks -->
         <div class="app-wiki-article__text-block">
           <p
             class="app-wiki-article__paragraph"
-            :class="{ 'app-wiki-article__paragraph--interfered': isInterfering }"
-          >
-            {{ interferedExtract }}
-          </p>
+            v-html="interferedExtract"
+          />
         </div>
       </div>
     </div>
@@ -78,15 +114,28 @@
 <script setup lang="ts">
 import type { NearestSatellite } from '~/types/satellite';
 import type { WikipediaArticle } from '~/types/wikipedia';
+import type { AttackEvent, AttackType } from '~/attackScript';
 
 defineProps<{
   closestScientific: NearestSatellite | null;
-  closestCommercial: NearestSatellite | null;
   article: WikipediaArticle | null;
   interferedExtract: string;
-  isInterfering: boolean;
+  imageFilter: string;
+  attackLog: AttackEvent[];
+  isTotallyBroken: boolean;
+  criticalSatelliteLimit: number;
+  attackZoneRangeKm: number;
+  isHealed: boolean;
+  healedBySatName: string | null;
   isLoading: boolean;
 }>();
+
+const formatAttackName = (type: AttackType): string => {
+  if (type === 'confidentialRedact') return 'Confidential Redact';
+  if (type === 'crossWord') return 'Cross Word';
+  if (type === 'qualityLossImage') return 'Image Loss';
+  return type;
+};
 </script>
 
 <style lang="scss" scoped>
@@ -98,20 +147,20 @@ defineProps<{
   gap: $spacing-lg;
   padding: $spacing-md 0;
 
-  &__interference-notice {
+  &__heal-notice {
     display: flex;
     align-items: center;
     gap: $spacing-md;
     padding: $spacing-sm $spacing-md;
-    border: 1px solid $color-commercial;
-    background: rgba($color-commercial, 0.06);
+    border: 1px solid $color-quaternary;
+    background: rgba($color-quaternary, 0.08);
     font-size: $font-size-sm;
     font-family: $font-mono;
   }
 
-  &__interference-badge {
-    background: $color-commercial;
-    color: $color-white;
+  &__heal-badge {
+    background: $color-quaternary;
+    color: $color-black;
     padding: 2px 6px;
     font-size: $font-size-xs;
     font-weight: 700;
@@ -120,9 +169,122 @@ defineProps<{
     flex-shrink: 0;
   }
 
-  &__interference-text {
+  &__heal-text {
     margin: 0;
     color: $color-text;
+  }
+
+  &__broken-notice {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-xs;
+    padding: $spacing-md;
+    border: 2px solid $color-primary;
+    background: rgba($color-primary, 0.08);
+    font-family: $font-mono;
+  }
+
+  &__broken-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  &__broken-badge {
+    background: $color-primary;
+    color: $color-white;
+    padding: 3px 8px;
+    font-size: $font-size-xs;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  &__broken-counter {
+    color: $color-primary;
+    font-weight: 700;
+    font-size: $font-size-xs;
+  }
+
+  &__broken-text {
+    margin: 0;
+    color: $color-text;
+    font-size: $font-size-sm;
+  }
+
+  &__attack-notice {
+    display: flex;
+    flex-direction: column;
+    gap: $spacing-xs;
+    padding: $spacing-sm $spacing-md;
+    border: 1px solid $color-commercial;
+    background: rgba($color-commercial, 0.05);
+    font-size: $font-size-sm;
+    font-family: $font-mono;
+  }
+
+  &__attack-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  &__attack-badge {
+    background: $color-commercial;
+    color: $color-white;
+    padding: 2px 6px;
+    font-size: $font-size-xs;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  &__attack-zone {
+    color: $color-text-muted;
+    font-size: $font-size-xs;
+  }
+
+  &__assignments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: $spacing-xs;
+    margin-top: $spacing-xs;
+  }
+
+  &__assignment-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: $color-white;
+    border: 1px solid $color-border;
+    border-radius: $radius-sm;
+    padding: 2px 6px;
+    font-size: 11px;
+  }
+
+  &__assignment-sat {
+    font-weight: 600;
+    color: $color-text;
+  }
+
+  &__assignment-arrow {
+    color: $color-text-faint;
+  }
+
+  &__assignment-type {
+    font-weight: 700;
+
+    &--confidentialRedact {
+      color: $color-black;
+    }
+
+    &--crossWord {
+      color: $color-secondary;
+    }
+
+    &--qualityLossImage {
+      color: $color-primary;
+    }
   }
 
   &__satellite-meta {
@@ -213,12 +375,14 @@ defineProps<{
     background: $color-surface;
     max-width: 260px;
     width: 100%;
+    overflow: hidden;
   }
 
   &__image {
     width: 100%;
     height: auto;
     display: block;
+    transition: filter $transition-base;
   }
 
   &__text-block {
@@ -230,10 +394,23 @@ defineProps<{
     font-size: $font-size-md;
     line-height: 1.8;
     color: $color-text;
+    font-family: $font-sans;
 
-    &--interfered {
-      letter-spacing: 0.02em;
-      color: #333333;
+    :deep(.app-wiki-article__censor) {
+      background-color: #111111;
+      color: #111111;
+      border-radius: 2px;
+      padding: 0 1px;
+      user-select: none;
+      display: inline;
+      line-height: 1;
+    }
+
+    :deep(.app-wiki-article__strike) {
+      text-decoration: line-through;
+      text-decoration-thickness: 2px;
+      text-decoration-color: #111111;
+      color: #666666;
     }
   }
 
