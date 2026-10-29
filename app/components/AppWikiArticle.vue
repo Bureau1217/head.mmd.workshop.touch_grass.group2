@@ -620,24 +620,13 @@ const applyRaysText = (doc: Document, force: number, isReplay: boolean = false) 
   const viewportHeight = doc.defaultView?.innerHeight || 700;
   const scrollY = doc.defaultView?.scrollY || 0;
 
-  // Ensure SVG overlay exists covering the document
-  let svgOverlay = doc.getElementById('app-wiki-article-orbit-svg') as SVGSVGElement | null;
-  if (!svgOverlay) {
-    svgOverlay = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svgOverlay.id = 'app-wiki-article-orbit-svg';
-    svgOverlay.style.cssText = `
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: ${Math.max(doc.body.scrollHeight, doc.documentElement.scrollHeight, 2500)}px;
-      pointer-events: none;
-      z-index: 100;
-      overflow: visible;
-    `;
-    doc.body.appendChild(svgOverlay);
-  } else {
-    svgOverlay.style.height = `${Math.max(doc.body.scrollHeight, doc.documentElement.scrollHeight, 2500)}px`;
+  // Track applied virtual rays via an invisible tracker container (no visual line across text!)
+  let trackerContainer = doc.getElementById('app-wiki-article-orbit-tracker') as HTMLElement | null;
+  if (!trackerContainer) {
+    trackerContainer = doc.createElement('div');
+    trackerContainer.id = 'app-wiki-article-orbit-tracker';
+    trackerContainer.style.display = 'none';
+    doc.body.appendChild(trackerContainer);
   }
 
   // Find candidate content containers
@@ -658,46 +647,13 @@ const applyRaysText = (doc: Document, force: number, isReplay: boolean = false) 
     const lineMinY = Math.min(y1, y2) - 30;
     const lineMaxY = Math.max(y1, y2) + 30;
 
-    // 1. Append the non-horizontal SVG streak line across the screen
-    const group = doc.createElementNS('http://www.w3.org/2000/svg', 'g');
-    group.setAttribute('class', 'app-wiki-article__orbit-group');
-    group.setAttribute('data-ray', String(r));
+    // Invisible marker tracking ray index r (no visual line drawn across the screen!)
+    const groupMarker = doc.createElement('span');
+    groupMarker.className = 'app-wiki-article__orbit-group';
+    groupMarker.setAttribute('data-ray', String(r));
+    trackerContainer.appendChild(groupMarker);
 
-    const glowLine = doc.createElementNS('http://www.w3.org/2000/svg', 'line');
-    glowLine.setAttribute('x1', String(x1));
-    glowLine.setAttribute('y1', String(y1));
-    glowLine.setAttribute('x2', String(x2));
-    glowLine.setAttribute('y2', String(y2));
-    glowLine.setAttribute('stroke', 'rgba(255, 255, 255, 0.45)');
-    glowLine.setAttribute('stroke-width', '5');
-    glowLine.setAttribute('stroke-linecap', 'round');
-    glowLine.setAttribute('stroke-dasharray', String(L));
-    glowLine.setAttribute('stroke-dashoffset', isReplay ? '0' : String(L));
-    glowLine.style.setProperty('--orbit-len', String(L));
-    if (!isReplay) {
-      glowLine.style.animation = `draw-orbit-streak ${durationSec}s linear forwards`;
-    }
-
-    const coreLine = doc.createElementNS('http://www.w3.org/2000/svg', 'line');
-    coreLine.setAttribute('x1', String(x1));
-    coreLine.setAttribute('y1', String(y1));
-    coreLine.setAttribute('x2', String(x2));
-    coreLine.setAttribute('y2', String(y2));
-    coreLine.setAttribute('stroke', 'rgba(255, 255, 255, 0.95)');
-    coreLine.setAttribute('stroke-width', '1.8');
-    coreLine.setAttribute('stroke-linecap', 'round');
-    coreLine.setAttribute('stroke-dasharray', String(L));
-    coreLine.setAttribute('stroke-dashoffset', isReplay ? '0' : String(L));
-    coreLine.style.setProperty('--orbit-len', String(L));
-    if (!isReplay) {
-      coreLine.style.animation = `draw-orbit-streak ${durationSec}s linear forwards`;
-    }
-
-    group.appendChild(glowLine);
-    group.appendChild(coreLine);
-    svgOverlay.appendChild(group);
-
-    // 2. Find intersecting containers and convert touching characters to '0'
+    // 2. Find intersecting containers and convert touching characters to '0' along the virtual diagonal trajectory
     const intersectingContainers = containers.filter((c) => {
       const cr = c.getBoundingClientRect();
       const cTop = cr.top + scrollY;
@@ -870,6 +826,7 @@ const healDoc = (doc: Document) => {
   doc.querySelectorAll('.app-wiki-article__rays-overlay').forEach((el) => el.remove());
   doc.querySelectorAll('.app-wiki-article__image-orbit-svg').forEach((el) => el.remove());
   doc.getElementById('app-wiki-article-orbit-svg')?.remove();
+  doc.getElementById('app-wiki-article-orbit-tracker')?.remove();
   if (cleanBodyHtml.value && doc.body) {
     doc.body.innerHTML = cleanBodyHtml.value;
   }
