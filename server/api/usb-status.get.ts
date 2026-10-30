@@ -65,7 +65,7 @@ function detectUsbWindows(): Promise<UsbStatusResponse> {
             if (disk?.DeviceID) {
               const name = disk.VolumeName
                 ? `${disk.VolumeName} (${disk.DeviceID})`
-                : `Disque amovible (${disk.DeviceID})`;
+                : `Clé USB (${disk.DeviceID})`;
               devices.push({
                 name,
                 deviceId: disk.DeviceID,
@@ -81,12 +81,14 @@ function detectUsbWindows(): Promise<UsbStatusResponse> {
               ? [parsed.physical]
               : [];
 
-          for (const drive of physicalList) {
-            if (drive?.DeviceID) {
-              const alreadyListed = devices.some((d) => d.deviceId === drive.DeviceID);
-              if (!alreadyListed) {
+          // If there are physical USB drives beyond the recognized logical disks
+          const extraPhysicalCount = physicalList.length - devices.length;
+          if (extraPhysicalCount > 0) {
+            for (let i = 0; i < extraPhysicalCount; i++) {
+              const drive = physicalList[devices.length + i];
+              if (drive) {
                 devices.push({
-                  name: drive.Model?.trim() || 'Clé USB',
+                  name: drive.Model?.trim() || `Clé USB #${devices.length + 1}`,
                   deviceId: drive.DeviceID,
                   type: 'usb-drive'
                 });

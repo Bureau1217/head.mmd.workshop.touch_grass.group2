@@ -19,14 +19,21 @@
     </div>
 
     <div class="app-header__right">
-      <!-- USB stick detection: Red dot indicator at top of page -->
+      <!-- USB stick detection: Red dot(s) indicator at top of page -->
       <div
         v-if="isUsbConnected"
         class="app-header__usb"
+        :class="{ 'app-header__usb--dual': isSecondUsbConnected }"
         :title="usbTooltip"
       >
         <span class="app-header__usb-dot" />
-        <span class="app-header__usb-label">USB</span>
+        <span
+          v-if="isSecondUsbConnected"
+          class="app-header__usb-dot app-header__usb-dot--second"
+        />
+        <span class="app-header__usb-label">
+          {{ isSecondUsbConnected ? 'USB 2/2 • SAUVEGARDÉ' : 'USB' }}
+        </span>
       </div>
       <span v-if="isUsbConnected" class="app-header__sep">/</span>
 
@@ -48,10 +55,12 @@ const props = withDefaults(
     deviceAzimuth: number;
     visibleCount: number;
     isUsbConnected?: boolean;
+    isSecondUsbConnected?: boolean;
     usbDevices?: UsbDevice[];
   }>(),
   {
     isUsbConnected: false,
+    isSecondUsbConnected: false,
     usbDevices: () => []
   }
 );
@@ -62,6 +71,12 @@ const emit = defineEmits<{
 
 const usbTooltip = computed<string>(() => {
   if (!props.isUsbConnected) return 'Aucune clé USB détectée';
+  if (props.isSecondUsbConnected) {
+    const list = props.usbDevices.length > 0
+      ? ` : ${props.usbDevices.map((d) => d.name).join(', ')}`
+      : '';
+    return `2 clés USB connectées — Données scientifiques sauvegardées, attaques en pause${list}`;
+  }
   if (props.usbDevices.length === 0) return 'Clé USB connectée';
   return `Clé USB connectée : ${props.usbDevices.map((d) => d.name).join(', ')}`;
 });
@@ -122,6 +137,10 @@ const usbTooltip = computed<string>(() => {
     gap: $spacing-xs;
     cursor: default;
     user-select: none;
+
+    &--dual {
+      gap: 4px;
+    }
   }
 
   &__usb-dot {
@@ -132,6 +151,10 @@ const usbTooltip = computed<string>(() => {
     box-shadow: 0 0 6px $color-usb-glow;
     display: inline-block;
     animation: usb-pulse 2s infinite ease-in-out;
+
+    &--second {
+      animation-delay: -1s;
+    }
   }
 
   &__usb-label {
@@ -139,6 +162,7 @@ const usbTooltip = computed<string>(() => {
     font-weight: 700;
     font-size: $font-size-xs;
     letter-spacing: 0.05em;
+    margin-left: 2px;
   }
 
   &__stat {

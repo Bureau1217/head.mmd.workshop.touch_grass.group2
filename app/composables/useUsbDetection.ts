@@ -21,24 +21,47 @@ export const useUsbDetection = () => {
   const serverDevices = ref<UsbDevice[]>([]);
   const isServerDetected = ref<boolean>(false);
   const webUsbDevices = ref<UsbDevice[]>([]);
-  const isSimulated = ref<boolean>(false);
+  // Simulated USB count: 0 = none, 1 = first stick, 2 = second stick (Starlink override)
+  const simulatedCount = ref<number>(0);
 
   let pollTimer: ReturnType<typeof setInterval> | null = null;
 
   const usbDevices = computed<UsbDevice[]>(() => {
     const list: UsbDevice[] = [...serverDevices.value, ...webUsbDevices.value];
-    if (isSimulated.value) {
+
+    // Add simulated devices if simulation is active and hardware hasn't already provided them
+    if (simulatedCount.value >= 1 && list.length < 1) {
       list.push({
-        name: 'Clé USB de test (Simulée)',
+        name: 'Clé USB #1 (Alpha)',
         type: 'simulated',
         deviceId: 'SIM-USB-01'
       });
     }
+
+    if (simulatedCount.value >= 2 && list.length < 2) {
+      list.push({
+        name: 'Clé USB #2 (Sauvegarde & Pause)',
+        type: 'simulated',
+        deviceId: 'SIM-USB-02'
+      });
+    }
+
     return list;
   });
 
+  const usbCount = computed<number>(() => {
+    const realCount = serverDevices.value.length + webUsbDevices.value.length;
+    return Math.max(realCount, simulatedCount.value);
+  });
+
+  // At least 1 USB stick plugged in (triggers red dot at top of page)
   const isUsbConnected = computed<boolean>(() => {
-    return isServerDetected.value || webUsbDevices.value.length > 0 || isSimulated.value;
+    return usbCount.value >= 1;
+  });
+
+  // Second USB stick plugged in (triggers Starlink iframe + space cats + markdown download)
+  const isSecondUsbConnected = computed<boolean>(() => {
+    return usbCount.value >= 2;
   });
 
   const pollServerUsbStatus = async () => {
@@ -53,8 +76,15 @@ export const useUsbDetection = () => {
     }
   };
 
-  const toggleUsbSimulation = () => {
-    isSimulated.value = !isSimulated.value;
+  /**
+   * Cycle simulation through 0 -> 1 -> 2 -> 0
+   */
+  const cycleUsbSimulation = () => {
+    simulatedCount.value = (simulatedCount.value + 1) % 3;
+  };
+
+  const setSimulatedCount = (count: number) => {
+    simulatedCount.value = Math.max(0, Math.min(2, count));
   };
 
   // Keyboard shortcut listener ('u' or 'U' when not focused in an input)
@@ -65,7 +95,7 @@ export const useUsbDetection = () => {
     }
 
     if (e.key === 'u' || e.key === 'U') {
-      toggleUsbSimulation();
+      cycleUsbSimulation();
     }
   };
 
@@ -140,9 +170,13 @@ export const useUsbDetection = () => {
 
   return {
     isUsbConnected,
+    isSecondUsbConnected,
+    usbCount,
     usbDevices,
-    isSimulated,
-    toggleUsbSimulation,
+    simulatedCount,
+    toggleUsbSimulation: cycleUsbSimulation,
+    cycleUsbSimulation,
+    setSimulatedCount,
     checkNow: pollServerUsbStatus
   };
 };

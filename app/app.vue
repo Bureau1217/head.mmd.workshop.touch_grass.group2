@@ -9,6 +9,7 @@
       :device-azimuth="deviceAzimuth"
       :visible-count="visibleSatellites.length"
       :is-usb-connected="isUsbConnected"
+      :is-second-usb-connected="isSecondUsbConnected"
       :usb-devices="usbDevices"
       @toggle-overlay="toggleOverlay"
     />
@@ -27,16 +28,18 @@
         :attack-log="attackLog"
         :latest-attack="latestAttack"
         :active-dwells-list="activeDwellsList"
-        :breakdown-progress="breakdownProgress"
+        :breakdownProgress="breakdownProgress"
         :is-totally-broken="isTotallyBroken"
         :critical-satellite-limit="criticalSatelliteLimit"
         :is-healed="isHealed"
         :healed-by-sat-name="healedBySatName"
         :is-loading="isWikiLoading"
         :is-usb-connected="isUsbConnected"
+        :is-second-usb-connected="isSecondUsbConnected"
         :usb-devices="usbDevices"
         @test-jump="handleTestJump"
         @toggle-usb-simulation="toggleUsbSimulation"
+        @download-markdown="downloadCurrentArticleMarkdown"
         @close-overlay="isOverlayOpen = false"
       />
     </main>
@@ -78,7 +81,15 @@ const {
   stopTracking
 } = useSatellites(userLat, userLon, deviceAzimuth);
 
-// 3. Wikipedia article logic with iframe layout, text/image attacks & healing
+// 3. USB stick detection & simulation (1st stick = red dot, 2nd stick = save data & pause attacks)
+const {
+  isUsbConnected,
+  isSecondUsbConnected,
+  usbDevices,
+  toggleUsbSimulation
+} = useUsbDetection();
+
+// 4. Wikipedia article logic with iframe layout, attacks, healing & data preservation
 const {
   currentTitle,
   urlCadre,
@@ -95,15 +106,9 @@ const {
   isHealed,
   healedBySatName,
   isLoading: isWikiLoading,
-  fetchArticleForSatellite
-} = useWikipedia(closestScientific, commercialSatsInZone);
-
-// 4. USB stick detection & simulation
-const {
-  isUsbConnected,
-  usbDevices,
-  toggleUsbSimulation
-} = useUsbDetection();
+  fetchArticleForSatellite,
+  downloadCurrentArticleMarkdown
+} = useWikipedia(closestScientific, commercialSatsInZone, isSecondUsbConnected, userLat, userLon);
 
 // "Tester un saut": picks another scientific satellite to test page change / healing!
 const handleTestJump = () => {

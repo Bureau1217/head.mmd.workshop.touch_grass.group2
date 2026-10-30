@@ -1,5 +1,6 @@
 import { ref, computed, watch, onMounted, onUnmounted, type Ref } from 'vue';
 import type { NearestSatellite, SatellitePosition } from '~/types/satellite';
+import { generateArticleMarkdown, downloadMarkdownFile } from '~/utils/htmlToMarkdown';
 import {
   crossWord,
   confidentialRedact,
@@ -91,7 +92,10 @@ export function calculateDwellForce(
 
 export const useWikipedia = (
   closestScientific: Ref<NearestSatellite | null>,
-  commercialSatsInZone: Ref<SatellitePosition[]>
+  commercialSatsInZone: Ref<SatellitePosition[]>,
+  isSecondUsbConnected?: Ref<boolean>,
+  userLat?: Ref<number>,
+  userLon?: Ref<number>
 ) => {
   const currentTitle = ref<string>('Satellite_artificiel');
   const urlCadre = ref<string>(`https://${DOMAINE}/wiki/Satellite_artificiel`);
@@ -130,6 +134,16 @@ export const useWikipedia = (
   const healedBySatName = ref<string | null>(null);
   const previousSatName = ref<string>('');
   const previousArticleTitle = ref<string>('');
+
+  // State preservation before Starlink override (for 2nd USB stick)
+  const savedScientificPage = ref<{
+    title: string;
+    urlCadre: string;
+    urlOuvrir: string;
+    cleanHtml: string;
+    attackedHtml: string;
+  } | null>(null);
+  const hasTriggeredSecondUsbDownload = ref<boolean>(false);
 
   // Progressive breakdown ratio from 0.0 (nominal) to 1.0 (rupture critique)
   const breakdownProgress = computed<number>(() => {
@@ -248,10 +262,46 @@ export const useWikipedia = (
     }
   };
 
+  const downloadCurrentArticleMarkdown = () => {
+    if (!cleanHtml.value) return;
+    const md = generateArticleMarkdown({
+      title: currentTitle.value,
+      html: cleanHtml.value,
+      satName: closestScientific.value?.name,
+      satPurpose: closestScientific.value?.purpose,
+      userLat: userLat?.value,
+      userLon: userLon?.value,
+      sourceUrl: urlOuvrir.value
+    });
+    const filename = `${currentTitle.value.replace(/[^a-zA-Z0-9_\u00C0-\u017F-]/g, '_')}_TouchGrass.md`;
+    downloadMarkdownFile(filename, md);
+  };
+
+  // Watch for second USB stick plug-in: download MD and pause attacks
+  if (isSecondUsbConnected) {
+    watch(
+      isSecondUsbConnected,
+      (connected) => {
+        if (connected) {
+          // 1. Download MD of the current scientific Wikipedia page
+          if (!hasTriggeredSecondUsbDownload.value && cleanHtml.value) {
+            hasTriggeredSecondUsbDownload.value = true;
+            downloadCurrentArticleMarkdown();
+          }
+          // Attacks are paused via tickDwellTimes and AppWikiArticle guards
+        } else {
+          // Second USB stick removed: reset download trigger and resume normal tracking/attacks
+          hasTriggeredSecondUsbDownload.value = false;
+        }
+      }
+    );
+  }
+
   watch(
     () => closestScientific.value?.name,
     () => {
-      if (closestScientific.value) {
+      // Only switch scientific satellite article if not paused by second USB stick
+      if (closestScientific.value && !isSecondUsbConnected?.value) {
         fetchArticleForSatellite(closestScientific.value);
       }
     },
@@ -259,11 +309,11 @@ export const useWikipedia = (
   );
 
   // Periodic dwell timer: every 1 second, track duration of commercial satellites in zone
-  // The longer they stay in the zone, the more their attack force escalates!
+  // When on Starlink override (second USB stick connected), attacks are stopped and wait for USB removal
   let dwellTimer: ReturnType<typeof setInterval> | null = null;
 
   const tickDwellTimes = () => {
-    if (!cleanHtml.value || isLoading.value || isTotallyBroken.value) {
+    if (!cleanHtml.value || isLoading.value || isTotallyBroken.value || isSecondUsbConnected?.value) {
       return;
     }
 
@@ -391,6 +441,7 @@ export const useWikipedia = (
     healedBySatName,
     isLoading,
     fetchError,
-    fetchArticleForSatellite
+    fetchArticleForSatellite,
+    downloadCurrentArticleMarkdown
   };
 };

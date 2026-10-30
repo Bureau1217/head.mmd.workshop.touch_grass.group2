@@ -1,5 +1,8 @@
 <template>
-  <div class="app-wiki-article" :class="{ 'app-wiki-article--vibrating': isVibrating }">
+  <div
+    class="app-wiki-article"
+    :class="{ 'app-wiki-article--vibrating': isVibrating && !isSecondUsbConnected }"
+  >
     <!-- Sticky Overlay: appears only when double-clicking on "touch grass" title in AppHeader -->
     <Transition name="overlay-fade">
       <div
@@ -23,7 +26,10 @@
           <div class="app-wiki-article__texte">
             <!-- Scientific Satellite Status & Reason -->
             <div class="app-wiki-article__line">
-              <span v-if="isUsbConnected" class="app-wiki-article__badge app-wiki-article__badge--usb">
+              <span v-if="isSecondUsbConnected" class="app-wiki-article__badge app-wiki-article__badge--usb-dual">
+                Données scientifiques sauvegardées • Attaques en pause
+              </span>
+              <span v-else-if="isUsbConnected" class="app-wiki-article__badge app-wiki-article__badge--usb">
                 Clé USB branchée
               </span>
               <span v-if="isHealed" class="app-wiki-article__badge app-wiki-article__badge--healed">Page guérie</span>
@@ -88,11 +94,28 @@
             <button
               type="button"
               class="app-wiki-article__btn"
-              :class="{ 'app-wiki-article__btn--usb': isUsbConnected }"
-              title="Raccourci clavier : touche U"
+              :class="{
+                'app-wiki-article__btn--usb': isUsbConnected && !isSecondUsbConnected,
+                'app-wiki-article__btn--usb-dual': isSecondUsbConnected
+              }"
+              title="Raccourci clavier : touche U (cycle 0 → 1 → 2 → 0)"
               @click="emit('toggleUsbSimulation')"
             >
-              {{ isUsbConnected ? 'Retirer clé USB (test)' : 'Brancher clé USB (test)' }}
+              {{
+                isSecondUsbConnected
+                  ? 'Retirer 2ème clé (reprendre les attaques)'
+                  : isUsbConnected
+                    ? 'Brancher 2ème clé (sauvegarder & pause)'
+                    : 'Brancher 1ère clé (Test)'
+              }}
+            </button>
+            <button
+              type="button"
+              class="app-wiki-article__btn"
+              title="Télécharger l'article Wikipédia actuel au format Markdown"
+              @click="emit('downloadMarkdown')"
+            >
+              Télécharger .md
             </button>
             <a
               :href="urlOuvrir"
@@ -105,6 +128,19 @@
           </div>
         </div>
       </div>
+    </Transition>
+
+    <!-- Message notification: Données scientifiques sauvegardées -->
+    <Transition name="banner-slide">
+      <aside v-if="isSecondUsbConnected" class="app-wiki-article__saved-banner">
+        <span class="app-wiki-article__saved-dot" />
+        <div class="app-wiki-article__saved-text">
+          <strong class="app-wiki-article__saved-title">DONNÉES SCIENTIFIQUES SAUVEGARDÉES</strong>
+          <span class="app-wiki-article__saved-desc">
+            L'article a été exporté au format Markdown (.md). Les attaques de satellites sont en pause jusqu'au retrait de la clé USB.
+          </span>
+        </div>
+      </aside>
     </Transition>
 
     <!-- Le vrai site Wikipédia s'affiche ici via srcdoc stable sans rechargement flash -->
@@ -160,12 +196,14 @@ const props = withDefaults(
     healedBySatName: string | null;
     isLoading: boolean;
     isUsbConnected?: boolean;
+    isSecondUsbConnected?: boolean;
     usbDevices?: UsbDevice[];
   }>(),
   {
     showOverlay: false,
     activeDwellsList: () => [],
     isUsbConnected: false,
+    isSecondUsbConnected: false,
     usbDevices: () => []
   }
 );
@@ -173,6 +211,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   (e: 'testJump'): void;
   (e: 'toggleUsbSimulation'): void;
+  (e: 'downloadMarkdown'): void;
   (e: 'closeOverlay'): void;
 }>();
 
@@ -186,6 +225,12 @@ let earthquakeTimer: ReturnType<typeof setTimeout> | null = null;
 let earthquakeEndTimer: ReturnType<typeof setTimeout> | null = null;
 
 const triggerEarthquake = () => {
+  // If Starlink override is active, attacks are suspended
+  if (props.isSecondUsbConnected) {
+    isVibrating.value = false;
+    return;
+  }
+
   if (earthquakeTimer) clearTimeout(earthquakeTimer);
   if (earthquakeEndTimer) clearTimeout(earthquakeEndTimer);
 
@@ -209,6 +254,24 @@ const triggerEarthquake = () => {
     }
   }, 2400);
 };
+
+// Immediate attack cutoff when Starlink is plugged in
+watch(
+  () => props.isSecondUsbConnected,
+  (connected) => {
+    if (connected) {
+      isVibrating.value = false;
+      if (earthquakeTimer) {
+        clearTimeout(earthquakeTimer);
+        earthquakeTimer = null;
+      }
+      if (earthquakeEndTimer) {
+        clearTimeout(earthquakeEndTimer);
+        earthquakeEndTimer = null;
+      }
+    }
+  }
+);
 
 onMounted(() => {
   initAudioUnlock();
@@ -1468,7 +1531,7 @@ const attackStateSignature = computed(() => {
 watch(
   attackStateSignature,
   (newSig, oldSig) => {
-    if (!isDocReady.value) return;
+    if (!isDocReady.value || props.isSecondUsbConnected) return;
     if (newSig && newSig !== oldSig) {
       syncActiveAttacks(false);
     }
@@ -1479,7 +1542,7 @@ watch(
 watch(
   () => props.latestAttack,
   (latest) => {
-    if (!latest || !isDocReady.value) return;
+    if (!latest || !isDocReady.value || props.isSecondUsbConnected) return;
     syncActiveAttacks(false);
   }
 );
@@ -1489,7 +1552,7 @@ watch(
   () => props.breakdownProgress,
   (progress) => {
     const doc = iframeRef.value?.contentDocument;
-    if (!doc || !isDocReady.value) return;
+    if (!doc || !isDocReady.value || props.isSecondUsbConnected) return;
     applyProgressiveBreakdown(doc, progress || 0, props.isTotallyBroken);
   },
   { immediate: true }
@@ -1500,7 +1563,7 @@ watch(
   () => props.isTotallyBroken,
   (broken) => {
     const doc = iframeRef.value?.contentDocument;
-    if (!doc || !isDocReady.value) return;
+    if (!doc || !isDocReady.value || props.isSecondUsbConnected) return;
     if (broken) {
       applyTotalBreakdown(doc);
     }
@@ -1534,6 +1597,55 @@ watch(
 
   &--vibrating {
     animation: article-flyby-shake 2.4s cubic-bezier(0.4, 0, 0.2, 1) both;
+  }
+
+  &__saved-banner {
+    position: absolute;
+    top: $spacing-md;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    gap: $spacing-md;
+    padding: $spacing-sm $spacing-lg;
+    background: rgba(17, 17, 17, 0.94);
+    border: 1px solid $color-usb-dot;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35), 0 0 12px rgba(255, 59, 48, 0.25);
+    backdrop-filter: blur(8px);
+    border-radius: $radius-md;
+    color: #ffffff;
+    font-family: $font-mono;
+    user-select: none;
+    max-width: 90vw;
+  }
+
+  &__saved-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: $radius-full;
+    background: $color-usb-dot;
+    box-shadow: 0 0 8px $color-usb-dot;
+    flex-shrink: 0;
+    animation: usb-pulse 1.8s infinite ease-in-out;
+  }
+
+  &__saved-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  &__saved-title {
+    font-size: $font-size-xs;
+    font-weight: 700;
+    color: #ffffff;
+    letter-spacing: 0.06em;
+  }
+
+  &__saved-desc {
+    font-size: 11px;
+    color: #cccccc;
   }
 
   &__overlay-backdrop {
@@ -1644,6 +1756,12 @@ watch(
     &--usb {
       background: $color-usb-dot;
       color: $color-white;
+    }
+
+    &--usb-dual {
+      background: #7c4dff;
+      color: $color-white;
+      box-shadow: 0 0 8px rgba(124, 77, 255, 0.5);
     }
   }
 
@@ -1787,6 +1905,18 @@ watch(
         border-color: $color-usb-dot;
       }
     }
+
+    &--usb-dual {
+      border-color: #7c4dff;
+      color: #7c4dff;
+      font-weight: 700;
+      box-shadow: 0 0 6px rgba(124, 77, 255, 0.2);
+
+      &:hover {
+        background: rgba(124, 77, 255, 0.12);
+        border-color: #7c4dff;
+      }
+    }
   }
 
   &__link {
@@ -1861,6 +1991,17 @@ watch(
     opacity: 0;
     transform: translateY(-12px) scale(0.98);
   }
+}
+
+.banner-slide-enter-active,
+.banner-slide-leave-active {
+  transition: all $transition-base;
+}
+
+.banner-slide-enter-from,
+.banner-slide-leave-to {
+  opacity: 0;
+  transform: translate(-50%, -15px);
 }
 
 @keyframes article-flyby-shake {
