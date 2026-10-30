@@ -16,6 +16,7 @@ export {
 export { fallingLetters } from './fallingLetters';
 
 export type AttackType =
+  | 'satellitePass'
   | 'qualityLossImage'
   | 'raysImage'
   | 'raysText'
@@ -38,4 +39,6 @@ export interface CommercialSatelliteDwell {
   inZone: boolean;
   distanceKm: number;
   firstSeenAt: Date;
+  initialDelaySeconds?: number;
+  intervalSeconds?: number;
 }

@@ -14,7 +14,7 @@ export const useSatellites = (
   const isLoading = ref<boolean>(false);
   const lastCalculatedAt = ref<Date | null>(null);
 
-  // Attack zone: distance range around the user in kilometers
+  // Attack zone: focused overhead range around the user in kilometers
   const attackZoneRangeKm = ref<number>(1200);
 
   // Commercial satellites currently inside the attack zone
@@ -114,7 +114,8 @@ export const useSatellites = (
           visibleList.push(satPos);
 
           if (satData.type === 'commercial') {
-            if (rng <= attackZoneRangeKm.value) {
+            // Overhead attack zone: within 750 km and elevation >= 15° (passing across the user's sky)
+            if (rng <= attackZoneRangeKm.value && roundedEl >= 15) {
               inZoneList.push(satPos);
             }
 
@@ -158,9 +159,12 @@ export const useSatellites = (
     }
 
     visibleList.sort((a, b) => b.elevation - a.elevation);
+    // Focus on the closest overhead commercial satellites (capped to top 3) to prevent saturation
+    inZoneList.sort((a, b) => a.distance - b.distance);
+    const focusedZoneList = inZoneList.slice(0, 3);
 
     visibleSatellites.value = visibleList;
-    commercialSatsInZone.value = inZoneList;
+    commercialSatsInZone.value = focusedZoneList;
     newlyEnteredCommercialSats.value = enteredThisTick;
     closestCommercial.value = nearestComm;
     closestScientific.value = nearestSci || backupSci;

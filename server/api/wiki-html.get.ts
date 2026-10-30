@@ -60,6 +60,76 @@ export default defineEventHandler(async (event): Promise<string> => {
           z-index: 6;
           overflow: hidden;
         }
+        /* Collapsed Broken Image Placeholder (Signal Lost / Packet Drop) */
+        .app-wiki-article__image-wrap.is-collapsed {
+          display: block !important;
+          position: relative !important;
+          border: 1px dashed #a2a9b1 !important;
+          background-color: #f8f9fa !important;
+          border-radius: 4px !important;
+          padding: 10px 12px !important;
+          margin: 6px 0 !important;
+          min-height: 80px !important;
+          box-sizing: border-box !important;
+          transition: all 0.3s ease-out !important;
+          overflow: hidden !important;
+        }
+        .app-wiki-article__image-wrap.is-collapsed img,
+        .app-wiki-article__image-wrap.is-collapsed .app-wiki-article__image-orbit-svg,
+        .app-wiki-article__image-wrap.is-collapsed .app-wiki-article__rays-overlay {
+          display: none !important;
+          visibility: hidden !important;
+        }
+        .app-wiki-article__broken-placeholder {
+          display: flex !important;
+          flex-direction: column !important;
+          gap: 5px !important;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
+          color: #54595d !important;
+          user-select: none !important;
+        }
+        .app-wiki-article__broken-header {
+          display: flex !important;
+          align-items: center !important;
+          gap: 8px !important;
+        }
+        .app-wiki-article__broken-badge {
+          font-family: 'Courier New', Courier, monospace !important;
+          font-size: 10px !important;
+          font-weight: 700 !important;
+          color: #b32424 !important;
+          background: rgba(179, 36, 36, 0.08) !important;
+          padding: 1px 6px !important;
+          border-radius: 2px !important;
+          letter-spacing: 0.04em !important;
+        }
+        .app-wiki-article__broken-alt {
+          font-size: 12px !important;
+          font-style: italic !important;
+          color: #202122 !important;
+          line-height: 1.3 !important;
+          max-height: 2.6em !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+        }
+        .app-wiki-article__broken-sub {
+          font-size: 10px !important;
+          color: #72777d !important;
+        }
+        /* Earthquake tremor animation inside iframe */
+        @keyframes iframe-earthquake {
+          0% { transform: translate(0, 0); }
+          15% { transform: translate(-3px, 2px); }
+          30% { transform: translate(4px, -2px); }
+          45% { transform: translate(-4px, 3px); }
+          60% { transform: translate(3px, -2px); }
+          75% { transform: translate(-2px, 1px); }
+          90% { transform: translate(1px, -1px); }
+          100% { transform: translate(0, 0); }
+        }
+        body.is-earthquake {
+          animation: iframe-earthquake 0.68s ease-in-out both !important;
+        }
         .app-wiki-article__rays-overlay {
           position: absolute;
           inset: 0;

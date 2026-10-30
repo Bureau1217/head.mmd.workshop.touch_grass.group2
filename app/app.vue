@@ -25,6 +25,7 @@
         :attack-log="attackLog"
         :latest-attack="latestAttack"
         :active-dwells-list="activeDwellsList"
+        :breakdown-progress="breakdownProgress"
         :is-totally-broken="isTotallyBroken"
         :critical-satellite-limit="criticalSatelliteLimit"
         :is-healed="isHealed"
@@ -83,6 +84,7 @@ const {
   attackLog,
   latestAttack,
   activeDwellsList,
+  breakdownProgress,
   isTotallyBroken,
   criticalSatelliteLimit,
   isHealed,

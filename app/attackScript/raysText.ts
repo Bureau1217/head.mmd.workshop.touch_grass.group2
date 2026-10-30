@@ -32,38 +32,94 @@ export function getOrbitRayCoordinates(
   const w = Math.max(400, width);
   const h = Math.max(300, height);
 
-  // Alternates ascending and descending diagonal tracks (real satellite constellation orbits)
-  const isAscending = rayIndex % 2 === 1;
-
-  // Inclination angle: 28° to 52° (strictly non-horizontal!)
-  const angleDeg = (isAscending ? -1 : 1) * (28 + ((rayIndex * 17) % 24));
-  const slope = Math.tan((angleDeg * Math.PI) / 180);
-
-  // Position the line across the visible viewport so it is immediately visible
-  const availableH = Math.max(100, h - 160);
-  const yOffset = 70 + ((rayIndex * 110 + 40) % availableH);
+  // Cycle through 4 diverse trajectory patterns across all screen borders:
+  // Pattern 0: Left border -> Right border (descending diagonal)
+  // Pattern 1: Right border -> Left border (ascending or descending diagonal)
+  // Pattern 2: Top border -> Bottom border (steep downward diagonal cut)
+  // Pattern 3: Bottom border -> Top border (steep upward diagonal cut)
+  const pattern = Math.abs(rayIndex) % 4;
 
   let x1: number;
   let y1: number;
   let x2: number;
   let y2: number;
 
-  if (isAscending) {
-    // Starts bottom-left, ascends towards top-right
-    x1 = -30;
-    y1 = scrollY + yOffset + Math.min(220, availableH);
-    x2 = w + 30;
-    y2 = y1 + (x2 - x1) * slope; // slope is negative, so y2 < y1
-  } else {
-    // Starts top-left, descends towards bottom-right
-    x1 = -30;
-    y1 = scrollY + yOffset;
-    x2 = w + 30;
-    y2 = y1 + (x2 - x1) * slope; // slope is positive, so y2 > y1
+  const margin = 40;
+
+  switch (pattern) {
+    case 0: {
+      // Pattern 0: Left -> Right (descending)
+      x1 = -margin;
+      const availableH = Math.max(100, h - 200);
+      y1 = scrollY + 60 + ((rayIndex * 97 + 30) % availableH);
+
+      const angleDeg = 24 + ((rayIndex * 11) % 22); // 24° to 45°
+      const slope = Math.tan((angleDeg * Math.PI) / 180);
+      x2 = w + margin;
+      y2 = y1 + (x2 - x1) * slope;
+      break;
+    }
+
+    case 1: {
+      // Pattern 1: Right -> Left (descending or ascending)
+      x1 = w + margin;
+      const availableH = Math.max(100, h - 200);
+      const isAscending = rayIndex % 2 === 1;
+
+      if (isAscending) {
+        y1 = scrollY + h - 80 - ((rayIndex * 89 + 20) % availableH);
+        const angleDeg = -(22 + ((rayIndex * 13) % 20)); // -22° to -41°
+        const slope = Math.tan((angleDeg * Math.PI) / 180);
+        x2 = -margin;
+        y2 = y1 - (x1 - x2) * slope;
+      } else {
+        y1 = scrollY + 50 + ((rayIndex * 83 + 30) % availableH);
+        const angleDeg = 22 + ((rayIndex * 13) % 20); // 22° to 41°
+        const slope = Math.tan((angleDeg * Math.PI) / 180);
+        x2 = -margin;
+        y2 = y1 + (x1 - x2) * slope;
+      }
+      break;
+    }
+
+    case 2: {
+      // Pattern 2: Top -> Bottom (steep diagonal cut across viewport)
+      y1 = scrollY - margin;
+      const availableW = Math.max(120, w - 240);
+      x1 = 80 + ((rayIndex * 131 + 40) % availableW);
+
+      const toRight = rayIndex % 2 === 0;
+      const angleDeg = toRight ? 55 + ((rayIndex * 7) % 18) : -(55 + ((rayIndex * 7) % 18));
+      const rad = (Math.abs(angleDeg) * Math.PI) / 180;
+
+      y2 = scrollY + h + margin;
+      const dx = (y2 - y1) / Math.tan(rad);
+      x2 = toRight ? x1 + dx : x1 - dx;
+      break;
+    }
+
+    case 3:
+    default: {
+      // Pattern 3: Bottom -> Top (steep diagonal cut upwards)
+      y1 = scrollY + h + margin;
+      const availableW = Math.max(120, w - 240);
+      x1 = 100 + ((rayIndex * 149 + 60) % availableW);
+
+      const toRight = rayIndex % 2 === 1;
+      const angleDeg = toRight ? -(54 + ((rayIndex * 8) % 16)) : 54 + ((rayIndex * 8) % 16);
+      const rad = (Math.abs(angleDeg) * Math.PI) / 180;
+
+      y2 = scrollY - margin;
+      const dy = Math.abs(y2 - y1);
+      const dx = dy / Math.tan(rad);
+      x2 = toRight ? x1 + dx : x1 - dx;
+      break;
+    }
   }
 
   const length = Math.hypot(x2 - x1, y2 - y1);
   const durationSec = 2.4;
+  const computedAngleDeg = (Math.atan2(y2 - y1, x2 - x1) * 180) / Math.PI;
 
   return {
     rayIndex,
@@ -71,7 +127,7 @@ export function getOrbitRayCoordinates(
     y1: Math.round(y1),
     x2: Math.round(x2),
     y2: Math.round(y2),
-    angleDeg: Math.round(angleDeg),
+    angleDeg: Math.round(computedAngleDeg),
     length: Math.round(length),
     durationSec
   };

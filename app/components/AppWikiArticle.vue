@@ -1,5 +1,5 @@
 <template>
-  <div class="app-wiki-article">
+  <div class="app-wiki-article" :class="{ 'app-wiki-article--vibrating': isVibrating }">
     <!-- Sticky Overlay: appears only when double-clicking on "touch grass" title in AppHeader -->
     <Transition name="overlay-fade">
       <div
@@ -25,6 +25,12 @@
             <div class="app-wiki-article__line">
               <span v-if="isHealed" class="app-wiki-article__badge app-wiki-article__badge--healed">Page guérie</span>
               <span v-else-if="isTotallyBroken" class="app-wiki-article__badge app-wiki-article__badge--broken">Signal détruit</span>
+              <span v-else-if="(breakdownProgress || 0) >= 0.7" class="app-wiki-article__badge app-wiki-article__badge--broken" style="background: rgba(220, 53, 69, 0.15); color: #c82333;">
+                Interférence critique ({{ Math.round((breakdownProgress || 0) * 100) }}%)
+              </span>
+              <span v-else-if="(breakdownProgress || 0) >= 0.35" class="app-wiki-article__badge app-wiki-article__badge--attacked" style="background: rgba(255, 152, 0, 0.15); color: #e65100;">
+                Interférence modérée ({{ Math.round((breakdownProgress || 0) * 100) }}%)
+              </span>
               <span v-else-if="activeCommercialCount > 0" class="app-wiki-article__badge app-wiki-article__badge--attacked">
                 {{ activeCommercialCount }} {{ activeCommercialCount === 1 ? 'brouilleur actif' : 'brouilleurs actifs' }} (Niv. {{ maxForce }}/10)
               </span>
@@ -62,7 +68,7 @@
                 <span v-else class="app-wiki-article__dwell-exited">(Sorti • Persistant)</span>
                 → {{ formatAttackName(item.attackType) }}
                 <span v-if="item.force > 0" class="app-wiki-article__force">Force {{ item.force }}/10</span>
-                <span v-else class="app-wiki-article__force app-wiki-article__force--intro">Approche</span>
+                <span v-else class="app-wiki-article__force app-wiki-article__force--intro">Approche (attaque dans {{ Math.max(0, (item.initialDelaySeconds || 10) - item.dwellSeconds) }}s)</span>
               </span>
             </div>
           </div>
@@ -102,7 +108,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import type { NearestSatellite } from '~/types/satellite';
 import {
   crossWord,
@@ -119,6 +125,7 @@ import {
   type AttackType,
   type CommercialSatelliteDwell
 } from '~/attackScript';
+import { playSatellitePassSound, initAudioUnlock } from '~/utils/satelliteSound';
 
 const props = withDefaults(
   defineProps<{
@@ -133,6 +140,7 @@ const props = withDefaults(
     attackLog: AttackEvent[];
     latestAttack: AttackEvent | null;
     activeDwellsList?: CommercialSatelliteDwell[];
+    breakdownProgress?: number;
     isTotallyBroken: boolean;
     criticalSatelliteLimit: number;
     isHealed: boolean;
@@ -154,6 +162,45 @@ const iframeRef = ref<HTMLIFrameElement | null>(null);
 const cleanBodyHtml = ref<string>('');
 const isDocReady = ref<boolean>(false);
 
+// Earthquake vibration & audio feedback state
+const isVibrating = ref<boolean>(false);
+let earthquakeTimer: ReturnType<typeof setTimeout> | null = null;
+let earthquakeEndTimer: ReturnType<typeof setTimeout> | null = null;
+
+const triggerEarthquake = () => {
+  if (earthquakeTimer) clearTimeout(earthquakeTimer);
+  if (earthquakeEndTimer) clearTimeout(earthquakeEndTimer);
+
+  // Vibration and sound start immediately at t = 0 (very low),
+  // ramp up to peak at the middle of transit (t = 1.2s), and fade away at t = 2.4s.
+  isVibrating.value = true;
+  playSatellitePassSound();
+
+  const doc = iframeRef.value?.contentDocument;
+  if (doc?.body) {
+    doc.body.classList.remove('is-earthquake');
+    // Force reflow to restart animation smoothly if multiple passes occur
+    void doc.body.offsetWidth;
+    doc.body.classList.add('is-earthquake');
+  }
+
+  earthquakeEndTimer = setTimeout(() => {
+    isVibrating.value = false;
+    if (doc?.body) {
+      doc.body.classList.remove('is-earthquake');
+    }
+  }, 2400);
+};
+
+onMounted(() => {
+  initAudioUnlock();
+});
+
+onUnmounted(() => {
+  if (earthquakeTimer) clearTimeout(earthquakeTimer);
+  if (earthquakeEndTimer) clearTimeout(earthquakeEndTimer);
+});
+
 const activeCommercialCount = computed(() => {
   return props.activeDwellsList?.filter((d) => d.inZone).length || 0;
 });
@@ -164,6 +211,7 @@ const maxForce = computed(() => {
 });
 
 const formatAttackName = (type: AttackType): string => {
+  if (type === 'satellitePass') return 'Passage Orbital (Texte & Images)';
   if (type === 'qualityLossImage') return 'Dégradation Image (Pixels)';
   if (type === 'raysImage') return 'Rayures Satellite (Blanches)';
   if (type === 'raysText') return 'Trace Orbitale (Zéros)';
@@ -222,6 +270,77 @@ const ensureAttackStyles = (doc: Document) => {
       pointer-events: none;
       z-index: 6;
       overflow: hidden;
+    }
+    /* Collapsed Broken Image Placeholder (Signal Lost / Missing Image Icon) */
+    .app-wiki-article__image-wrap.is-collapsed {
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      position: relative !important;
+      border: 1px solid #c8ccd1 !important;
+      background-color: #f8f9fa !important;
+      border-radius: 2px !important;
+      box-sizing: border-box !important;
+      transition: all 0.25s ease-out !important;
+      overflow: hidden !important;
+    }
+    .app-wiki-article__image-wrap.is-collapsed img,
+    .app-wiki-article__image-wrap.is-collapsed .app-wiki-article__image-orbit-svg,
+    .app-wiki-article__image-wrap.is-collapsed .app-wiki-article__rays-overlay {
+      display: none !important;
+      visibility: hidden !important;
+    }
+    .app-wiki-article__broken-placeholder {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      width: 100% !important;
+      height: 100% !important;
+      user-select: none !important;
+    }
+    .app-wiki-article__broken-icon {
+      display: block !important;
+      opacity: 0.65 !important;
+      transition: opacity 0.2s ease !important;
+    }
+    /* Flyby earthquake tremor animation inside iframe:
+       Subtle, low-amplitude physical vibration peaking at ~1.5px without nauseating screen tilting */
+    @keyframes iframe-earthquake {
+      /* 0% to 20%: Starts very subtle */
+      0% { transform: translate(0, 0); }
+      5% { transform: translate(0.2px, -0.15px); }
+      10% { transform: translate(-0.25px, 0.2px); }
+      15% { transform: translate(0.35px, -0.25px); }
+      20% { transform: translate(-0.45px, 0.35px); }
+
+      /* 25% to 40%: Building gently as satellite approaches overhead */
+      25% { transform: translate(0.65px, -0.5px); }
+      30% { transform: translate(-0.85px, 0.65px); }
+      35% { transform: translate(1.05px, -0.8px); }
+      40% { transform: translate(-1.25px, 0.95px); }
+
+      /* 45% to 55%: Peak subtle vibration at zenith (middle of transit) */
+      45% { transform: translate(1.45px, -1.1px); }
+      48% { transform: translate(-1.6px, 1.2px); }
+      50% { transform: translate(1.65px, -1.25px); }
+      52% { transform: translate(-1.5px, 1.15px); }
+      55% { transform: translate(1.35px, -1.0px); }
+
+      /* 60% to 75%: Decreasing gently as satellite departs */
+      60% { transform: translate(-1.1px, 0.8px); }
+      65% { transform: translate(0.85px, -0.65px); }
+      70% { transform: translate(-0.6px, 0.45px); }
+      75% { transform: translate(0.4px, -0.3px); }
+
+      /* 80% to 100%: Dying out smoothly to rest */
+      80% { transform: translate(-0.25px, 0.2px); }
+      85% { transform: translate(0.15px, -0.1px); }
+      90% { transform: translate(-0.1px, 0.05px); }
+      95% { transform: translate(0.05px, -0.05px); }
+      100% { transform: translate(0, 0); }
+    }
+    body.is-earthquake {
+      animation: iframe-earthquake 2.4s cubic-bezier(0.4, 0, 0.2, 1) both !important;
     }
     /* Satellite Ray Trails (raysImage): physically converts underlying pixels to gray */
     .app-wiki-article__rays-overlay {
@@ -544,22 +663,102 @@ const applyTextAttack = (
   }
 };
 
-// Smooth CSS filter attack on all images in the iframe
-// Delegated to applyRaysImage so images never suffer whole-image blur, but receive authentic diagonal satellite glare streaks
-const applyQualityLossImage = (doc: Document, force: number, isReplay: boolean = false) => {
-  if (!doc || !doc.body) return;
-  applyRaysImage(doc, force, isReplay);
+// Liang-Barsky line segment clipping against rectangle in page coordinates
+function clipLineToRect(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  rLeft: number,
+  rTop: number,
+  rRight: number,
+  rBottom: number
+): { t0: number; t1: number } | null {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  let t0 = 0;
+  let t1 = 1;
+
+  const p = [-dx, dx, -dy, dy];
+  const q = [x1 - rLeft, rRight - x1, y1 - rTop, rBottom - y1];
+
+  for (let i = 0; i < 4; i++) {
+    if (p[i] === 0) {
+      if (q[i] < 0) return null;
+    } else {
+      const r = q[i] / p[i];
+      if (p[i] < 0) {
+        if (r > t1) return null;
+        if (r > t0) t0 = r;
+      } else {
+        if (r < t0) return null;
+        if (r < t1) t1 = r;
+      }
+    }
+  }
+
+  if (t0 > t1) return null;
+  return { t0, t1 };
+}
+
+// Collapses an image wrapper that has sustained multiple satellite passes into the failed-to-load broken icon state
+const collapseImageToBrokenIcon = (wrap: HTMLElement, doc: Document) => {
+  if (wrap.classList.contains('is-collapsed')) return;
+
+  const originalImg = wrap.querySelector('img');
+  const altText = originalImg?.getAttribute('alt') || 'Image';
+  const imgW = Math.max(80, wrap.clientWidth || originalImg?.clientWidth || 220);
+  const imgH = Math.max(60, wrap.clientHeight || originalImg?.clientHeight || 150);
+
+  wrap.classList.add('is-collapsed');
+  wrap.style.width = `${imgW}px`;
+  wrap.style.height = `${imgH}px`;
+
+  let placeholder = wrap.querySelector('.app-wiki-article__broken-placeholder');
+  if (!placeholder) {
+    placeholder = doc.createElement('div');
+    placeholder.className = 'app-wiki-article__broken-placeholder';
+    placeholder.setAttribute('title', altText);
+    placeholder.innerHTML = `
+      <svg class="app-wiki-article__broken-icon" viewBox="0 0 48 48" width="40" height="40" fill="none">
+        <rect x="5" y="7" width="38" height="34" rx="3" fill="#ffffff" stroke="#a2a9b1" stroke-width="2" />
+        <path d="M9 35l11-13 8 9 7-8 9 12H9z" fill="#eaecf0" stroke="#c8ccd1" stroke-width="1" />
+        <circle cx="16" cy="17" r="3.2" fill="#c8ccd1" />
+        <path d="M22 6l5 12-6 8 6 10-3 6" stroke="#888c91" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+      </svg>
+    `;
+    wrap.appendChild(placeholder);
+  }
 };
 
-// Satellite ray trails attack: draws non-horizontal optical streak lines across scientific images simulating real satellite constellation glares.
-// Ray tracks accumulate across force increases without resetting existing rays.
-const applyRaysImage = (doc: Document, force: number, isReplay: boolean = false) => {
+// Combined Satellite Orbital Pass:
+// A single satellite traverses the screen along an inclined diagonal path,
+// affecting BOTH text (flipping characters to '0') and images (drawing glare streaks) in its path.
+// When in transit, it triggers an earthquake vibration and organic oscillator rumble matching the flyby envelope.
+// When too many lines (>= 2) cross a specific image, that image collapses into the failed-to-load broken icon state.
+const applyCombinedSatellitePass = (doc: Document, force: number, isReplay: boolean = false) => {
   if (!doc || !doc.body) return;
   ensureAttackStyles(doc);
 
-  const images = Array.from(
-    doc.querySelectorAll<HTMLImageElement>('img')
-  ).filter((img) => {
+  const targetRayCount = Math.min(10, Math.max(1, force));
+
+  let trackerContainer = doc.getElementById('app-wiki-article-orbit-tracker') as HTMLElement | null;
+  if (!trackerContainer) {
+    trackerContainer = doc.createElement('div');
+    trackerContainer.id = 'app-wiki-article-orbit-tracker';
+    trackerContainer.style.display = 'none';
+    doc.body.appendChild(trackerContainer);
+  }
+
+  const existingTracks = trackerContainer.querySelectorAll('.app-wiki-article__orbit-group');
+  const currentRayCount = existingTracks.length;
+
+  const viewportWidth = doc.documentElement.clientWidth || doc.body.clientWidth || 900;
+  const viewportHeight = doc.defaultView?.innerHeight || 700;
+  const scrollY = doc.defaultView?.scrollY || 0;
+
+  // 1. Gather all candidate images in the article
+  const images = Array.from(doc.querySelectorAll<HTMLImageElement>('img')).filter((img) => {
     const src = img.getAttribute('src') || '';
     if (src.includes('badge') || src.includes('icon') || src.includes('symbol')) return false;
     const w = img.clientWidth || img.naturalWidth || parseInt(img.getAttribute('width') || '100', 10);
@@ -567,13 +766,8 @@ const applyRaysImage = (doc: Document, force: number, isReplay: boolean = false)
     return w >= 60 && h >= 40;
   });
 
-  if (images.length === 0) {
-    return;
-  }
-
-  const targetRayCount = Math.min(10, Math.max(1, force));
-
-  images.forEach((img, index) => {
+  const imageWrappers: HTMLElement[] = [];
+  images.forEach((img) => {
     let wrapper = img.parentElement as HTMLElement | null;
     if (!wrapper) return;
 
@@ -590,74 +784,11 @@ const applyRaysImage = (doc: Document, force: number, isReplay: boolean = false)
       wrapper.style.overflow = 'hidden';
       wrapper.style.verticalAlign = 'top';
     }
-
     img.style.display = 'block';
-
-    const imgW = img.clientWidth || img.naturalWidth || parseInt(img.getAttribute('width') || '300', 10);
-    const imgH = img.clientHeight || img.naturalHeight || parseInt(img.getAttribute('height') || '200', 10);
-
-    let svgOverlay = wrapper.querySelector<SVGSVGElement>('.app-wiki-article__image-orbit-svg');
-    if (!svgOverlay) {
-      svgOverlay = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
-      svgOverlay.setAttribute('class', 'app-wiki-article__image-orbit-svg');
-      svgOverlay.setAttribute('viewBox', `0 0 ${imgW} ${imgH}`);
-      svgOverlay.setAttribute('preserveAspectRatio', 'none');
-      svgOverlay.style.cssText = `
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        pointer-events: none;
-        z-index: 6;
-        overflow: hidden;
-      `;
-      wrapper.appendChild(svgOverlay);
-    }
-
-    const currentRayCount = svgOverlay.querySelectorAll('.app-wiki-article__image-orbit-group').length;
-    // Append only NEW rays so existing rays never restart from zero
-    for (let r = currentRayCount; r < targetRayCount; r++) {
-      const groupMarkup = createImageOrbitRaySvgGroup(r, imgW, imgH, index, isReplay);
-      const parser = new DOMParser();
-      const parsedDoc = parser.parseFromString(
-        `<svg xmlns="http://www.w3.org/2000/svg">${groupMarkup}</svg>`,
-        'image/svg+xml'
-      );
-      const gEl = parsedDoc.querySelector('.app-wiki-article__image-orbit-group');
-      if (gEl) {
-        svgOverlay.appendChild(doc.importNode(gEl, true));
-      }
-    }
+    imageWrappers.push(wrapper);
   });
-};
 
-// Satellite orbital track attack: draws a non-horizontal virtual line across the screen that linearly converts touching characters to '0'
-// Cumulative across force levels without resetting previously created orbital lines.
-const applyRaysText = (doc: Document, force: number, isReplay: boolean = false) => {
-  if (!doc || !doc.body) return;
-  ensureAttackStyles(doc);
-
-  const targetRayCount = Math.min(10, Math.max(1, force));
-  const existingTracks = doc.querySelectorAll('.app-wiki-article__orbit-group');
-  const currentRayCount = existingTracks.length;
-
-  if (currentRayCount >= targetRayCount) return;
-
-  const viewportWidth = doc.documentElement.clientWidth || doc.body.clientWidth || 900;
-  const viewportHeight = doc.defaultView?.innerHeight || 700;
-  const scrollY = doc.defaultView?.scrollY || 0;
-
-  // Track applied virtual rays via an invisible tracker container (no visual line across text!)
-  let trackerContainer = doc.getElementById('app-wiki-article-orbit-tracker') as HTMLElement | null;
-  if (!trackerContainer) {
-    trackerContainer = doc.createElement('div');
-    trackerContainer.id = 'app-wiki-article-orbit-tracker';
-    trackerContainer.style.display = 'none';
-    doc.body.appendChild(trackerContainer);
-  }
-
-  // Find candidate content containers
+  // 2. Gather candidate text containers
   const containers = Array.from(
     doc.querySelectorAll<HTMLElement>('p, li, dd, dt, blockquote, td, th, h2, h3, figcaption')
   ).filter((el) => {
@@ -665,23 +796,38 @@ const applyRaysText = (doc: Document, force: number, isReplay: boolean = false) 
     return (el.textContent || '').trim().length > 0;
   });
 
+  // 3. Apply each new orbital pass
   for (let r = currentRayCount; r < targetRayCount; r++) {
+    const k = r - currentRayCount;
+    // When multiple satellite passes occur in a batch, stagger them by 2.8s
+    // so they fly by sequentially rather than clumping simultaneously
+    const passDelaySec = isReplay ? 0 : k * 2.8;
+
     const coords = getOrbitRayCoordinates(r, viewportWidth, viewportHeight, scrollY);
     const { x1, y1, x2, y2, length: L, durationSec } = coords;
 
-    // Line bounding box
     const lineMinX = Math.min(x1, x2) - 30;
     const lineMaxX = Math.max(x1, x2) + 30;
     const lineMinY = Math.min(y1, y2) - 30;
     const lineMaxY = Math.max(y1, y2) + 30;
 
-    // Invisible marker tracking ray index r (no visual line drawn across the screen!)
     const groupMarker = doc.createElement('span');
     groupMarker.className = 'app-wiki-article__orbit-group';
     groupMarker.setAttribute('data-ray', String(r));
     trackerContainer.appendChild(groupMarker);
 
-    // 2. Find intersecting containers and convert touching characters to '0' along the virtual diagonal trajectory
+    // Vibration & Sound: starts low at entry, swells to zenith at middle, fades away
+    if (!isReplay) {
+      if (passDelaySec > 0) {
+        setTimeout(() => {
+          triggerEarthquake();
+        }, Math.round(passDelaySec * 1000));
+      } else {
+        triggerEarthquake();
+      }
+    }
+
+    // A. AFFECT TEXT ALONG THIS SATELLITE'S PATH
     const intersectingContainers = containers.filter((c) => {
       const cr = c.getBoundingClientRect();
       const cTop = cr.top + scrollY;
@@ -740,7 +886,6 @@ const applyRaysText = (doc: Document, force: number, isReplay: boolean = false) 
             const charX = rect.left + rect.width / 2;
             const charY = rect.top + scrollY + rect.height / 2;
 
-            // Projection onto the line segment
             const u = ((charX - x1) * (x2 - x1) + (charY - y1) * (y2 - y1)) / (L * L);
             if (u < 0 || u > 1) continue;
 
@@ -748,12 +893,11 @@ const applyRaysText = (doc: Document, force: number, isReplay: boolean = false) 
             const projY = y1 + u * (y2 - y1);
             const dist = Math.hypot(charX - projX, charY - projY);
 
-            // Touching tolerance: 16px (width of satellite interference beam)
-            if (dist <= 16) {
+            if (dist <= 18) {
               hitChars.push({ index: i, char: ch, t: u });
             }
           } catch {
-            // Ignore range errors
+            // Ignore range boundary issues
           }
         }
 
@@ -769,7 +913,7 @@ const applyRaysText = (doc: Document, force: number, isReplay: boolean = false) 
                 textBuf = '';
               }
               const t = hitMap.get(i)!;
-              const delaySec = isReplay ? 0 : t * durationSec;
+              const delaySec = isReplay ? 0 : passDelaySec + t * durationSec;
 
               const span = doc.createElement('span');
               span.className = 'app-wiki-article__orbit-char';
@@ -790,7 +934,123 @@ const applyRaysText = (doc: Document, force: number, isReplay: boolean = false) 
         }
       }
     }
+
+    // B. AFFECT IMAGES ALONG THIS EXACT PATH
+    imageWrappers.forEach((wrapper) => {
+      const img = wrapper.querySelector('img');
+      if (!img) return;
+
+      const rect = wrapper.getBoundingClientRect();
+      const rLeft = rect.left;
+      const rTop = rect.top + scrollY;
+      const rRight = rect.right;
+      const rBottom = rect.bottom + scrollY;
+
+      const clipped = clipLineToRect(x1, y1, x2, y2, rLeft, rTop, rRight, rBottom);
+      if (!clipped) return;
+
+      wrapper.setAttribute('data-traversed', 'true');
+      const currentHits = Number(wrapper.getAttribute('data-hit-count') || 0) + 1;
+      wrapper.setAttribute('data-hit-count', String(currentHits));
+
+      const { t0, t1 } = clipped;
+      const imgW = Math.max(60, wrapper.clientWidth || img.clientWidth || 300);
+      const imgH = Math.max(40, wrapper.clientHeight || img.clientHeight || 200);
+
+      const segX1 = Math.round(x1 + t0 * (x2 - x1) - rLeft);
+      const segY1 = Math.round(y1 + t0 * (y2 - y1) - rTop);
+      const segX2 = Math.round(x1 + t1 * (x2 - x1) - rLeft);
+      const segY2 = Math.round(y1 + t1 * (y2 - y1) - rTop);
+      const segLen = Math.max(10, Math.round(Math.hypot(segX2 - segX1, segY2 - segY1)));
+
+      const entryDelaySec = isReplay ? 0 : parseFloat((t0 * durationSec).toFixed(2));
+      const crossDurationSec = isReplay ? 0 : Math.max(0.2, parseFloat(((t1 - t0) * durationSec).toFixed(2)));
+      const totalEntryDelaySec = isReplay ? 0 : passDelaySec + entryDelaySec;
+
+      let svgOverlay = wrapper.querySelector<SVGSVGElement>('.app-wiki-article__image-orbit-svg');
+      if (!svgOverlay) {
+        svgOverlay = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
+        svgOverlay.setAttribute('class', 'app-wiki-article__image-orbit-svg');
+        svgOverlay.setAttribute('viewBox', `0 0 ${imgW} ${imgH}`);
+        svgOverlay.setAttribute('preserveAspectRatio', 'none');
+        svgOverlay.style.cssText = `
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          pointer-events: none;
+          z-index: 6;
+          overflow: hidden;
+        `;
+        wrapper.appendChild(svgOverlay);
+      }
+
+      const g = doc.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.setAttribute('class', 'app-wiki-article__image-orbit-group');
+      g.setAttribute('data-ray', String(r));
+
+      const animStyle = isReplay
+        ? ''
+        : `animation: draw-image-orbit-streak ${crossDurationSec}s linear forwards; animation-delay: ${totalEntryDelaySec.toFixed(2)}s;`;
+      const offset = isReplay ? '0' : String(segLen);
+
+      g.innerHTML = `
+        <line
+          x1="${segX1}" y1="${segY1}" x2="${segX2}" y2="${segY2}"
+          stroke="rgba(255, 255, 255, 0.25)"
+          stroke-width="16"
+          stroke-linecap="round"
+          stroke-dasharray="${segLen}"
+          stroke-dashoffset="${offset}"
+          style="--image-orbit-len: ${segLen}; ${animStyle}"
+        />
+        <line
+          x1="${segX1}" y1="${segY1}" x2="${segX2}" y2="${segY2}"
+          stroke="rgba(255, 255, 255, 0.6)"
+          stroke-width="6"
+          stroke-linecap="round"
+          stroke-dasharray="${segLen}"
+          stroke-dashoffset="${offset}"
+          style="--image-orbit-len: ${segLen}; ${animStyle}"
+        />
+        <line
+          x1="${segX1}" y1="${segY1}" x2="${segX2}" y2="${segY2}"
+          stroke="#ffffff"
+          stroke-width="2.2"
+          stroke-linecap="round"
+          stroke-dasharray="${segLen}"
+          stroke-dashoffset="${offset}"
+          style="--image-orbit-len: ${segLen}; ${animStyle}"
+        />
+      `;
+      svgOverlay.appendChild(g);
+
+      // When too many lines (>= 3) cross this specific image, it collapses to the failed-to-load broken icon
+      if (currentHits >= 3) {
+        if (isReplay) {
+          collapseImageToBrokenIcon(wrapper, doc);
+        } else {
+          const collapseDelayMs = Math.round((passDelaySec + entryDelaySec + crossDurationSec) * 1000);
+          setTimeout(() => {
+            collapseImageToBrokenIcon(wrapper, doc);
+          }, collapseDelayMs);
+        }
+      }
+    });
   }
+};
+
+const applyQualityLossImage = (doc: Document, force: number, isReplay: boolean = false) => {
+  applyCombinedSatellitePass(doc, force, isReplay);
+};
+
+const applyRaysImage = (doc: Document, force: number, isReplay: boolean = false) => {
+  applyCombinedSatellitePass(doc, force, isReplay);
+};
+
+const applyRaysText = (doc: Document, force: number, isReplay: boolean = false) => {
+  applyCombinedSatellitePass(doc, force, isReplay);
 };
 
 // Falling letters attack: rips individual characters from scientific text, dropping them with gravity
@@ -798,10 +1058,15 @@ const applyFallingLetters = (doc: Document, force: number) => {
   applyTextAttack(doc, fallingLetters, force);
 };
 
-// Apply total breakdown overlay style on critical limit reached:
-// Applies a dynamic glitch filter on the whole page without altering page colors or blurring images
-const applyTotalBreakdown = (doc: Document) => {
+// Applies progressive digital signal degradation based on breakdown progress (0.0 to 1.0)
+const applyProgressiveBreakdown = (doc: Document, progress: number, isTotallyBroken: boolean) => {
   if (!doc || !doc.head) return;
+
+  if (progress < 0.35 && !isTotallyBroken) {
+    doc.getElementById('satellite-breakdown-style')?.remove();
+    doc.getElementById('satellite-glitch-overlay')?.remove();
+    return;
+  }
 
   // 1. Inject SVG glitch displacement filters into the iframe if not already present
   if (!doc.getElementById('satellite-glitch-svg-defs')) {
@@ -813,15 +1078,15 @@ const applyTotalBreakdown = (doc: Document) => {
         <defs>
           <filter id="satellite-glitch-displace-1" x="0%" y="0%" width="100%" height="100%">
             <feTurbulence type="fractalNoise" baseFrequency="0.04 0.9" numOctaves="1" result="noise" />
-            <feDisplacementMap in="SourceGraphic" in2="noise" scale="14" xChannelSelector="R" yChannelSelector="G" />
+            <feDisplacementMap in="SourceGraphic" in2="noise" scale="8" xChannelSelector="R" yChannelSelector="G" />
           </filter>
           <filter id="satellite-glitch-displace-2" x="0%" y="0%" width="100%" height="100%">
             <feTurbulence type="fractalNoise" baseFrequency="0.02 0.75" numOctaves="2" result="noise" />
-            <feDisplacementMap in="SourceGraphic" in2="noise" scale="22" xChannelSelector="G" yChannelSelector="R" />
+            <feDisplacementMap in="SourceGraphic" in2="noise" scale="14" xChannelSelector="G" yChannelSelector="R" />
           </filter>
           <filter id="satellite-glitch-displace-3" x="0%" y="0%" width="100%" height="100%">
             <feTurbulence type="fractalNoise" baseFrequency="0.06 0.98" numOctaves="1" result="noise" />
-            <feDisplacementMap in="SourceGraphic" in2="noise" scale="32" xChannelSelector="B" yChannelSelector="B" />
+            <feDisplacementMap in="SourceGraphic" in2="noise" scale="22" xChannelSelector="B" yChannelSelector="B" />
           </filter>
         </defs>
       </svg>
@@ -829,14 +1094,20 @@ const applyTotalBreakdown = (doc: Document) => {
     (doc.body || doc.documentElement).appendChild(glitchDefs);
   }
 
-  // 2. Inject CRT scanlines & chromatic horizontal tear bars overlay
-  if (!doc.getElementById('satellite-glitch-overlay') && doc.body) {
-    const glitchOverlay = doc.createElement('div');
+  // 2. Progressive CRT scanlines & chromatic horizontal tear bars overlay
+  let glitchOverlay = doc.getElementById('satellite-glitch-overlay');
+  if (!glitchOverlay && doc.body) {
+    glitchOverlay = doc.createElement('div');
     glitchOverlay.id = 'satellite-glitch-overlay';
     doc.body.appendChild(glitchOverlay);
   }
 
-  // 3. Inject glitch CSS animation on the whole page without altering base colors or blurring images
+  // Determine progressive stage intensity
+  const isFull = isTotallyBroken || progress >= 1.0;
+  const isSevere = progress >= 0.7;
+  const overlayOpacity = isFull ? '0.85' : (isSevere ? '0.45' : '0.2');
+  const animSpeed = isFull ? '2.4s' : (isSevere ? '3.6s' : '5.2s');
+
   let styleEl = doc.getElementById('satellite-breakdown-style') as HTMLStyleElement | null;
   if (!styleEl) {
     styleEl = doc.createElement('style');
@@ -844,9 +1115,9 @@ const applyTotalBreakdown = (doc: Document) => {
     doc.head.appendChild(styleEl);
   }
   styleEl.textContent = `
-    /* Full-page digital signal glitch filter without altering colors or blurring images */
+    /* Progressive digital signal glitch filter without altering colors or blurring images */
     html, body {
-      animation: page-glitch-jitter 2.6s infinite steps(1) !important;
+      animation: page-glitch-jitter ${animSpeed} infinite steps(1) !important;
       will-change: transform, filter !important;
     }
     @keyframes page-glitch-jitter {
@@ -855,11 +1126,11 @@ const applyTotalBreakdown = (doc: Document) => {
         filter: none;
       }
       6% {
-        transform: translate(-3px, 1px) skewX(-0.6deg);
+        transform: translate(-2px, 1px);
         filter: url(#satellite-glitch-displace-1);
       }
       9% {
-        transform: translate(4px, -1px) skewX(0.8deg);
+        transform: translate(2px, -1px);
         filter: url(#satellite-glitch-displace-2);
       }
       12% {
@@ -867,11 +1138,11 @@ const applyTotalBreakdown = (doc: Document) => {
         filter: none;
       }
       30% {
-        transform: translate(2px, 0) skewX(0.4deg);
+        transform: translate(1px, 0);
         filter: url(#satellite-glitch-displace-1);
       }
       33% {
-        transform: translate(-5px, 2px) skewX(-1.2deg);
+        transform: translate(-3px, 1px);
         filter: url(#satellite-glitch-displace-3);
       }
       36% {
@@ -879,11 +1150,11 @@ const applyTotalBreakdown = (doc: Document) => {
         filter: none;
       }
       57% {
-        transform: translate(-2px, -1px);
+        transform: translate(-1px, -1px);
         filter: url(#satellite-glitch-displace-1);
       }
       60% {
-        transform: translate(3px, 1px) skewX(0.7deg);
+        transform: translate(2px, 1px);
         filter: url(#satellite-glitch-displace-2);
       }
       63% {
@@ -891,11 +1162,11 @@ const applyTotalBreakdown = (doc: Document) => {
         filter: none;
       }
       80% {
-        transform: translate(-4px, 0) skewX(-0.9deg);
+        transform: translate(-2px, 0);
         filter: url(#satellite-glitch-displace-3);
       }
       83% {
-        transform: translate(2px, -1px) skewX(0.4deg);
+        transform: translate(1px, -1px);
         filter: url(#satellite-glitch-displace-1);
       }
       86% {
@@ -915,6 +1186,8 @@ const applyTotalBreakdown = (doc: Document) => {
       height: 100vh !important;
       pointer-events: none !important;
       z-index: 999999 !important;
+      opacity: ${overlayOpacity} !important;
+      transition: opacity 1.2s ease !important;
       background: repeating-linear-gradient(
         0deg,
         rgba(0, 0, 0, 0.05) 0px,
@@ -934,17 +1207,17 @@ const applyTotalBreakdown = (doc: Document) => {
     }
     #satellite-glitch-overlay::before {
       top: 25% !important;
-      height: 14px !important;
-      background: rgba(0, 240, 255, 0.16) !important;
+      height: 12px !important;
+      background: rgba(0, 240, 255, 0.14) !important;
       mix-blend-mode: color-dodge !important;
-      animation: glitch-bar-sweep 1.8s infinite steps(1) !important;
+      animation: glitch-bar-sweep 2.2s infinite steps(1) !important;
     }
     #satellite-glitch-overlay::after {
       top: 65% !important;
-      height: 8px !important;
-      background: rgba(255, 0, 80, 0.16) !important;
+      height: 7px !important;
+      background: rgba(255, 0, 80, 0.14) !important;
       mix-blend-mode: color-dodge !important;
-      animation: glitch-bar-sweep-2 2.3s infinite steps(1) !important;
+      animation: glitch-bar-sweep-2 2.8s infinite steps(1) !important;
     }
     @keyframes glitch-scanline-flicker {
       0% {
@@ -983,12 +1256,18 @@ const applyTotalBreakdown = (doc: Document) => {
   `;
 };
 
+// Apply total breakdown overlay style on critical limit reached:
+const applyTotalBreakdown = (doc: Document) => {
+  applyProgressiveBreakdown(doc, 1.0, true);
+};
+
 // Heal document in place without reloading
 const healDoc = (doc: Document) => {
   if (!doc) return;
   doc.getElementById('satellite-breakdown-style')?.remove();
   doc.getElementById('satellite-glitch-svg-defs')?.remove();
   doc.getElementById('satellite-glitch-overlay')?.remove();
+  doc.body?.classList.remove('is-earthquake');
   const imageStyle = doc.getElementById('satellite-attack-image-filter');
   if (imageStyle) {
     imageStyle.textContent = `
@@ -998,6 +1277,15 @@ const healDoc = (doc: Document) => {
       }
     `;
   }
+  doc.querySelectorAll('.app-wiki-article__image-wrap').forEach((wrap) => {
+    wrap.classList.remove('is-collapsed');
+    wrap.removeAttribute('data-traversed');
+    wrap.removeAttribute('data-hit-count');
+    (wrap as HTMLElement).style.width = '';
+    (wrap as HTMLElement).style.height = '';
+    wrap.querySelector('.app-wiki-article__broken-placeholder')?.remove();
+    wrap.querySelector('.app-wiki-article__image-orbit-svg')?.remove();
+  });
   doc.querySelectorAll('.app-wiki-article__rays-overlay').forEach((el) => el.remove());
   doc.querySelectorAll('.app-wiki-article__image-orbit-svg').forEach((el) => el.remove());
   doc.getElementById('app-wiki-article-orbit-svg')?.remove();
@@ -1015,6 +1303,8 @@ const syncActiveAttacks = (isReplay: boolean = false) => {
   if (props.isTotallyBroken) {
     applyTotalBreakdown(doc);
     return;
+  } else if ((props.breakdownProgress || 0) >= 0.35) {
+    applyProgressiveBreakdown(doc, props.breakdownProgress || 0, false);
   }
 
   // Aggregate attacks across all commercial satellites currently active or recorded
@@ -1022,8 +1312,7 @@ const syncActiveAttacks = (isReplay: boolean = false) => {
     ? props.activeDwellsList
     : props.attackLog.map((a) => ({ attackType: a.attackType, force: a.force }));
 
-  let totalRaysText = 0;
-  let totalRaysImage = 0;
+  let totalCombinedForce = 0;
   let totalFallingLetters = 0;
   let totalConfidential = 0;
   let totalCrossWord = 0;
@@ -1032,10 +1321,13 @@ const syncActiveAttacks = (isReplay: boolean = false) => {
     const f = item.force || 0;
     if (f <= 0) continue;
 
-    if (item.attackType === 'raysText') {
-      totalRaysText += f;
-    } else if (item.attackType === 'raysImage' || item.attackType === 'qualityLossImage') {
-      totalRaysImage += f;
+    if (
+      item.attackType === 'satellitePass' ||
+      item.attackType === 'raysText' ||
+      item.attackType === 'raysImage' ||
+      item.attackType === 'qualityLossImage'
+    ) {
+      totalCombinedForce += f;
     } else if (item.attackType === 'fallingLetters') {
       totalFallingLetters = Math.max(totalFallingLetters, f);
     } else if (item.attackType === 'confidentialRedact') {
@@ -1045,30 +1337,11 @@ const syncActiveAttacks = (isReplay: boolean = false) => {
     }
   }
 
-  // Check if article has images; if none, transfer image rays to text so interference is never invisible
-  const suitableImages = Array.from(doc.querySelectorAll<HTMLImageElement>('img')).filter((img) => {
-    const src = img.getAttribute('src') || '';
-    if (src.includes('badge') || src.includes('icon') || src.includes('symbol')) return false;
-    const w = img.clientWidth || img.naturalWidth || parseInt(img.getAttribute('width') || '100', 10);
-    const h = img.clientHeight || img.naturalHeight || parseInt(img.getAttribute('height') || '100', 10);
-    return w >= 60 && h >= 40;
-  });
+  // Cap at 10 passes to maintain visual quality
+  totalCombinedForce = Math.min(10, totalCombinedForce);
 
-  if (suitableImages.length === 0 && totalRaysImage > 0) {
-    totalRaysText += totalRaysImage;
-    totalRaysImage = 0;
-  }
-
-  // Cap at 10 rays to maintain visual readability and performance
-  totalRaysText = Math.min(10, totalRaysText);
-  totalRaysImage = Math.min(10, totalRaysImage);
-
-  // Apply BOTH text and image attacks SIMULTANEOUSLY!
-  if (totalRaysText > 0) {
-    applyRaysText(doc, totalRaysText, isReplay);
-  }
-  if (totalRaysImage > 0) {
-    applyRaysImage(doc, totalRaysImage, isReplay);
+  if (totalCombinedForce > 0) {
+    applyCombinedSatellitePass(doc, totalCombinedForce, isReplay);
   }
   if (totalFallingLetters > 0) {
     applyFallingLetters(doc, totalFallingLetters);
@@ -1129,6 +1402,17 @@ watch(
   }
 );
 
+// Watch for progressive breakdown progression
+watch(
+  () => props.breakdownProgress,
+  (progress) => {
+    const doc = iframeRef.value?.contentDocument;
+    if (!doc || !isDocReady.value) return;
+    applyProgressiveBreakdown(doc, progress || 0, props.isTotallyBroken);
+  },
+  { immediate: true }
+);
+
 // Watch for total breakdown
 watch(
   () => props.isTotallyBroken,
@@ -1165,6 +1449,10 @@ watch(
   width: 100%;
   height: 100%;
   overflow: hidden;
+
+  &--vibrating {
+    animation: article-flyby-shake 2.4s cubic-bezier(0.4, 0, 0.2, 1) both;
+  }
 
   &__overlay-backdrop {
     position: absolute;
@@ -1313,6 +1601,12 @@ watch(
       color: $color-secondary;
     }
 
+    &--satellitePass {
+      border-color: #111111;
+      color: #111111;
+      background: rgba(0, 0, 0, 0.05);
+    }
+
     &--qualityLossImage {
       border-color: $color-primary;
       color: $color-primary;
@@ -1417,6 +1711,24 @@ watch(
     background: #ffffff;
     display: block;
   }
+
+  &--vibrating {
+    animation: earthquake-rumble 0.68s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+  }
+}
+
+@keyframes earthquake-rumble {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  10% { transform: translate(-3px, 2px) rotate(-0.3deg); }
+  20% { transform: translate(4px, -3px) rotate(0.4deg); }
+  30% { transform: translate(-4px, -2px) rotate(-0.3deg); }
+  40% { transform: translate(3px, 3px) rotate(0.3deg); }
+  50% { transform: translate(-3px, -3px) rotate(-0.2deg); }
+  60% { transform: translate(3px, 2px) rotate(0.2deg); }
+  70% { transform: translate(-2px, 2px) rotate(-0.1deg); }
+  80% { transform: translate(2px, -1px) rotate(0.1deg); }
+  90% { transform: translate(-1px, 1px) rotate(0deg); }
+  100% { transform: translate(0, 0) rotate(0deg); }
 }
 
 @keyframes live-pulse {
@@ -1451,5 +1763,13 @@ watch(
     opacity: 0;
     transform: translateY(-12px) scale(0.98);
   }
+}
+
+@keyframes article-flyby-shake {
+  0% { transform: translate(0, 0); }
+  25% { transform: translate(0.15px, -0.15px); }
+  50% { transform: translate(-0.35px, 0.3px); }
+  75% { transform: translate(0.15px, -0.15px); }
+  100% { transform: translate(0, 0); }
 }
 </style>

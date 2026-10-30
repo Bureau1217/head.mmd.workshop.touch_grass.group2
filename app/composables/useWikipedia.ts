@@ -22,8 +22,7 @@ interface WikiSearchResponse {
 }
 
 const ATTACK_OPTIONS: AttackType[] = [
-  'raysText',
-  'raysImage'
+  'satellitePass'
 ];
 const DOMAINE = 'fr.wikipedia.org';
 
@@ -73,11 +72,21 @@ function attackHtmlImages(html: string, force: number): string {
 export const FORCE_INCREASE_INTERVAL_SECONDS = 10;
 export const MAX_FORCE_LEVEL = 10;
 
-export function calculateDwellForce(dwellSeconds: number): number {
-  // 10 seconds grace period before the first attack (0s to 9s: Force 0 / Approche)
-  if (dwellSeconds < FORCE_INCREASE_INTERVAL_SECONDS) return 0;
-  // Escalates by +1 every 10 seconds of presence (10s: Force 1, 20s: Force 2, ...)
-  return Math.min(MAX_FORCE_LEVEL, Math.floor(dwellSeconds / FORCE_INCREASE_INTERVAL_SECONDS));
+/**
+ * Calculates current attack force based on dwell time, individual satellite initial delay, and interval.
+ * Allows multiple satellites to attack at different times across a range of seconds rather than simultaneously.
+ */
+export function calculateDwellForce(
+  dwellSeconds: number,
+  initialDelaySeconds: number = FORCE_INCREASE_INTERVAL_SECONDS,
+  intervalSeconds: number = FORCE_INCREASE_INTERVAL_SECONDS
+): number {
+  // Grace period before the first attack (0s to initialDelaySeconds - 1: Force 0 / Approche)
+  if (dwellSeconds < initialDelaySeconds) return 0;
+  // 1st attack triggers at initialDelaySeconds (Force 1)
+  // Subsequent attacks escalate by +1 every intervalSeconds of presence
+  const elapsedAfterInitial = dwellSeconds - initialDelaySeconds;
+  return Math.min(MAX_FORCE_LEVEL, 1 + Math.floor(elapsedAfterInitial / Math.max(1, intervalSeconds)));
 }
 
 export const useWikipedia = (
@@ -122,13 +131,26 @@ export const useWikipedia = (
   const previousSatName = ref<string>('');
   const previousArticleTitle = ref<string>('');
 
-  const isTotallyBroken = computed<boolean>(() => {
+  // Progressive breakdown ratio from 0.0 (nominal) to 1.0 (rupture critique)
+  const breakdownProgress = computed<number>(() => {
     const list = Object.values(activeDwells.value);
-    if (list.length === 0) return false;
-    const sumForces = list.reduce((acc, cur) => acc + cur.force, 0);
-    // Only breaks if multiple satellites combine to 20+ force (sustained heavy interference)
-    // or any satellite reaches maximum Force 10 (stays in the zone for over 145s)
-    return sumForces >= 20 || list.some((d) => d.force >= 10);
+    if (list.length === 0) return 0;
+    const activeList = list.filter((d) => d.inZone);
+    const activeSum = activeList.reduce((acc, cur) => acc + cur.force, 0);
+    const totalSum = list.reduce((acc, cur) => acc + cur.force, 0);
+    const maxSingle = Math.max(0, ...list.map((d) => d.force));
+
+    // Progress smoothly and progressively:
+    // Requires sustained saturation (active sum of forces >= 18, total historical force >= 32, or max single >= 10)
+    const ratioActive = activeSum / 18;
+    const ratioTotal = totalSum / 32;
+    const ratioSingle = maxSingle / 10;
+    const p = Math.max(ratioActive, ratioTotal, ratioSingle);
+    return Math.min(1, Math.max(0, p));
+  });
+
+  const isTotallyBroken = computed<boolean>(() => {
+    return breakdownProgress.value >= 1;
   });
 
   // French mappings for satellite mission purposes
@@ -252,28 +274,26 @@ export const useWikipedia = (
       let entry = activeDwells.value[sat.name];
 
       if (!entry) {
-        // Balance attack types so both text and images are attacked when multiple satellites are present
-        const existingEntries = Object.values(activeDwells.value);
-        const countText = existingEntries.filter((e) => e.attackType === 'raysText').length;
-        const countImage = existingEntries.filter((e) => e.attackType === 'raysImage').length;
+        // Compute staggered attack timing across a range of seconds so multiple satellites never attack simultaneously
+        const satIndex = Object.keys(activeDwells.value).length;
+        const nameHash = sat.name.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+        const jitter = nameHash % 3; // 0, 1, or 2 seconds
+        // Range: 10s for the 1st satellite, 14s for the 2nd, 18s for the 3rd, etc. (range of 10 to 22+ seconds)
+        const initialDelaySeconds = 10 + (satIndex * 4) + jitter;
+        // Also de-synchronize recurring attack intervals (10 to 13 seconds)
+        const intervalSeconds = 10 + ((nameHash + satIndex) % 4);
 
-        let chosenAttack: AttackType;
-        if (countText < countImage) {
-          chosenAttack = 'raysText';
-        } else if (countImage < countText) {
-          chosenAttack = 'raysImage';
-        } else {
-          chosenAttack = ATTACK_OPTIONS[Math.floor(Math.random() * ATTACK_OPTIONS.length)];
-        }
-
+        // Satellite orbital interference pass affecting both text and images in its path
         entry = {
           name: sat.name,
-          attackType: chosenAttack,
+          attackType: 'satellitePass',
           dwellSeconds: 1,
           force: 0,
           inZone: true,
           distanceKm: sat.distance,
-          firstSeenAt: new Date()
+          firstSeenAt: new Date(),
+          initialDelaySeconds,
+          intervalSeconds
         };
         activeDwells.value[sat.name] = entry;
       } else {
@@ -283,7 +303,11 @@ export const useWikipedia = (
       }
 
       // Check if progressive dwell time unlocks higher attack force
-      const calculatedForce = calculateDwellForce(entry.dwellSeconds);
+      const calculatedForce = calculateDwellForce(
+        entry.dwellSeconds,
+        entry.initialDelaySeconds ?? FORCE_INCREASE_INTERVAL_SECONDS,
+        entry.intervalSeconds ?? FORCE_INCREASE_INTERVAL_SECONDS
+      );
 
       if (calculatedForce > entry.force) {
         entry.force = calculatedForce;
@@ -360,6 +384,7 @@ export const useWikipedia = (
     latestAttack,
     activeDwells,
     activeDwellsList,
+    breakdownProgress,
     isTotallyBroken,
     criticalSatelliteLimit,
     isHealed,
