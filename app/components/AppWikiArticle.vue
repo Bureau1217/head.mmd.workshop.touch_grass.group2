@@ -130,15 +130,103 @@
       </div>
     </Transition>
 
-    <!-- Message notification: Données scientifiques sauvegardées -->
+    <!-- Popup centré: Données scientifiques sauvegardées (2 clés USB) -->
+    <Transition name="modal-pop">
+      <div
+        v-if="isSecondUsbConnected && showSavedModal"
+        class="app-wiki-article__saved-backdrop"
+        @click.self="showSavedModal = false"
+      >
+        <div
+          class="app-wiki-article__saved-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="saved-modal-title"
+        >
+          <!-- En-tête de la boîte de dialogue -->
+          <div class="app-wiki-article__saved-modal-header">
+            <div class="app-wiki-article__saved-modal-tag">
+              <span class="app-wiki-article__saved-dot" />
+              <span class="app-wiki-article__saved-dot app-wiki-article__saved-dot--second" />
+              <span>ARCHIVAGE DE SECOURS // 2 CLÉS DÉTECTÉES</span>
+            </div>
+            <button
+              type="button"
+              class="app-wiki-article__saved-modal-close"
+              title="Fermer la boîte de dialogue (Échap ou clic extérieur)"
+              @click="showSavedModal = false"
+            >
+              ✕
+            </button>
+          </div>
+
+          <!-- Contenu principal -->
+          <div class="app-wiki-article__saved-modal-body">
+            <h2 id="saved-modal-title" class="app-wiki-article__saved-modal-title">
+              Données scientifiques sauvegardées
+            </h2>
+            <p class="app-wiki-article__saved-modal-desc">
+              L'article scientifique en cours a été capturé avec succès et archivé localement au format Markdown (<code>.md</code>).
+            </p>
+
+            <div class="app-wiki-article__saved-modal-grid">
+              <div class="app-wiki-article__saved-modal-card">
+                <span class="app-wiki-article__saved-modal-card-label">Statut du signal</span>
+                <span class="app-wiki-article__saved-modal-card-val app-wiki-article__saved-modal-card-val--alert">
+                  Attaques suspendues (Pause active)
+                </span>
+              </div>
+              <div class="app-wiki-article__saved-modal-card">
+                <span class="app-wiki-article__saved-modal-card-label">Article archivé</span>
+                <span class="app-wiki-article__saved-modal-card-val">
+                  {{ currentTitle || 'Article Wikipédia' }}
+                </span>
+              </div>
+              <div class="app-wiki-article__saved-modal-card">
+                <span class="app-wiki-article__saved-modal-card-label">Action requise</span>
+                <span class="app-wiki-article__saved-modal-card-val">
+                  Retirer la seconde clé USB pour réactiver les interférences
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Boutons d'action -->
+          <div class="app-wiki-article__saved-modal-footer">
+            <button
+              type="button"
+              class="app-wiki-article__saved-btn app-wiki-article__saved-btn--primary"
+              @click="emit('downloadMarkdown')"
+            >
+              Télécharger à nouveau (.md) ↓
+            </button>
+            <button
+              type="button"
+              class="app-wiki-article__saved-btn app-wiki-article__saved-btn--secondary"
+              @click="showSavedModal = false"
+            >
+              Continuer la lecture
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- Mini-bandeau discret en haut lorsque la modale est minimisée/fermée -->
     <Transition name="banner-slide">
-      <aside v-if="isSecondUsbConnected" class="app-wiki-article__saved-banner">
+      <aside
+        v-if="isSecondUsbConnected && !showSavedModal"
+        class="app-wiki-article__saved-banner"
+        title="Cliquer pour afficher les détails de la sauvegarde"
+        @click="showSavedModal = true"
+      >
         <span class="app-wiki-article__saved-dot" />
+        <span class="app-wiki-article__saved-dot app-wiki-article__saved-dot--second" />
         <span class="app-wiki-article__saved-title">données scientifiques sauvegardées</span>
         <span class="app-wiki-article__saved-sep">/</span>
-        <span class="app-wiki-article__saved-desc">archive markdown exportée (.md)</span>
+        <span class="app-wiki-article__saved-desc">attaques suspendues</span>
         <span class="app-wiki-article__saved-sep">/</span>
-        <span class="app-wiki-article__saved-status">attaques suspendues (retirer la clé USB pour reprendre)</span>
+        <span class="app-wiki-article__saved-action">afficher les détails ↗</span>
       </aside>
     </Transition>
 
@@ -272,13 +360,36 @@ watch(
   }
 );
 
+// State for the 2nd USB stick saved data popup dialog
+const showSavedModal = ref<boolean>(false);
+
+watch(
+  () => props.isSecondUsbConnected,
+  (connected) => {
+    if (connected) {
+      showSavedModal.value = true;
+    } else {
+      showSavedModal.value = false;
+    }
+  },
+  { immediate: true }
+);
+
+const handleModalKeydown = (e: KeyboardEvent) => {
+  if (e.key === 'Escape' && showSavedModal.value) {
+    showSavedModal.value = false;
+  }
+};
+
 onMounted(() => {
   initAudioUnlock();
+  window.addEventListener('keydown', handleModalKeydown);
 });
 
 onUnmounted(() => {
   if (earthquakeTimer) clearTimeout(earthquakeTimer);
   if (earthquakeEndTimer) clearTimeout(earthquakeEndTimer);
+  window.removeEventListener('keydown', handleModalKeydown);
 });
 
 const activeCommercialCount = computed(() => {
@@ -1619,6 +1730,14 @@ watch(
     user-select: none;
     white-space: nowrap;
     max-width: calc(100vw - 32px);
+    cursor: pointer;
+    transition: all $transition-fast;
+
+    &:hover {
+      background: #ffffff;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+      border-color: #d1d5db;
+    }
 
     @media (max-width: $breakpoint-md) {
       white-space: normal;
@@ -1637,6 +1756,10 @@ watch(
     flex-shrink: 0;
     display: inline-block;
     animation: usb-pulse 2s infinite ease-in-out;
+
+    &--second {
+      animation-delay: -1s;
+    }
   }
 
   &__saved-title {
@@ -1656,6 +1779,224 @@ watch(
   &__saved-status {
     color: $color-usb-dot;
     font-weight: 600;
+  }
+
+  &__saved-action {
+    color: $color-text;
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  &__saved-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1100;
+    background: rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: $spacing-md;
+  }
+
+  &__saved-modal {
+    position: relative;
+    width: 100%;
+    max-width: 600px;
+    background: #ffffff;
+    border: 1px solid $color-border;
+    border-radius: $radius-md;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.18), 0 4px 12px rgba(0, 0, 0, 0.06);
+    display: flex;
+    flex-direction: column;
+    padding: 24px 28px;
+    font-family: $font-mono;
+    user-select: none;
+
+    @media (max-width: $breakpoint-sm) {
+      padding: 18px 20px;
+      max-width: calc(100vw - 32px);
+    }
+  }
+
+  &__saved-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 12px;
+    border-bottom: 1px solid $color-border;
+    margin-bottom: 18px;
+  }
+
+  &__saved-modal-tag {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    color: $color-text-muted;
+    text-transform: uppercase;
+  }
+
+  &__saved-modal-close {
+    background: transparent;
+    border: none;
+    font: inherit;
+    font-size: 16px;
+    cursor: pointer;
+    color: $color-text-muted;
+    padding: 2px 6px;
+    line-height: 1;
+    border-radius: $radius-sm;
+    transition: all $transition-fast;
+
+    &:hover {
+      color: $color-primary;
+      background: $color-surface-hover;
+    }
+  }
+
+  &__saved-modal-body {
+    display: flex;
+    flex-direction: column;
+  }
+
+  &__saved-modal-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: $color-text;
+    letter-spacing: -0.02em;
+    margin: 0 0 10px 0;
+    line-height: 1.25;
+  }
+
+  &__saved-modal-desc {
+    font-size: 13px;
+    color: $color-text-muted;
+    line-height: 1.6;
+    margin: 0 0 18px 0;
+
+    code {
+      font-family: $font-mono;
+      background: $color-surface-hover;
+      padding: 2px 6px;
+      border-radius: $radius-sm;
+      border: 1px solid $color-border;
+      color: $color-text;
+      font-weight: 600;
+    }
+  }
+
+  &__saved-modal-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 22px;
+  }
+
+  &__saved-modal-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    background: #F9FAFB;
+    border: 1px solid $color-border;
+    border-radius: $radius-sm;
+    font-size: 12px;
+
+    @media (max-width: $breakpoint-sm) {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+    }
+  }
+
+  &__saved-modal-card-label {
+    color: $color-text-muted;
+    font-weight: 500;
+  }
+
+  &__saved-modal-card-val {
+    color: $color-text;
+    font-weight: 600;
+    text-align: right;
+
+    @media (max-width: $breakpoint-sm) {
+      text-align: left;
+    }
+
+    &--alert {
+      color: $color-usb-dot;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+
+      &::before {
+        content: "";
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background-color: $color-usb-dot;
+        display: inline-block;
+      }
+    }
+  }
+
+  &__saved-modal-footer {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+    padding-top: 16px;
+    border-top: 1px solid $color-border;
+
+    @media (max-width: $breakpoint-sm) {
+      flex-direction: column;
+      width: 100%;
+    }
+  }
+
+  &__saved-btn {
+    font-family: $font-mono;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 8px 16px;
+    border-radius: $radius-sm;
+    cursor: pointer;
+    transition: all $transition-fast;
+    user-select: none;
+
+    @media (max-width: $breakpoint-sm) {
+      width: 100%;
+      text-align: center;
+    }
+
+    &--primary {
+      background: $color-text;
+      color: #ffffff;
+      border: 1px solid $color-text;
+
+      &:hover {
+        background: #222222;
+        border-color: #222222;
+      }
+    }
+
+    &--secondary {
+      background: transparent;
+      color: $color-text;
+      border: 1px solid $color-border;
+
+      &:hover {
+        background: $color-surface-hover;
+      }
+    }
   }
 
   &__overlay-backdrop {
@@ -2012,6 +2353,25 @@ watch(
 .banner-slide-leave-to {
   opacity: 0;
   transform: translate(-50%, -15px);
+}
+
+.modal-pop-enter-active,
+.modal-pop-leave-active {
+  transition: opacity 0.22s ease;
+
+  .app-wiki-article__saved-modal {
+    transition: transform 0.24s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease;
+  }
+}
+
+.modal-pop-enter-from,
+.modal-pop-leave-to {
+  opacity: 0;
+
+  .app-wiki-article__saved-modal {
+    opacity: 0;
+    transform: scale(0.95) translateY(12px);
+  }
 }
 
 @keyframes article-flyby-shake {
