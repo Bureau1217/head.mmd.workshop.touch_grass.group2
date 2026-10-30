@@ -8,6 +8,8 @@
       :user-lon="userLon"
       :device-azimuth="deviceAzimuth"
       :visible-count="visibleSatellites.length"
+      :is-usb-connected="isUsbConnected"
+      :usb-devices="usbDevices"
       @toggle-overlay="toggleOverlay"
     />
 
@@ -31,7 +33,10 @@
         :is-healed="isHealed"
         :healed-by-sat-name="healedBySatName"
         :is-loading="isWikiLoading"
+        :is-usb-connected="isUsbConnected"
+        :usb-devices="usbDevices"
         @test-jump="handleTestJump"
+        @toggle-usb-simulation="toggleUsbSimulation"
         @close-overlay="isOverlayOpen = false"
       />
     </main>
@@ -92,6 +97,13 @@ const {
   isLoading: isWikiLoading,
   fetchArticleForSatellite
 } = useWikipedia(closestScientific, commercialSatsInZone);
+
+// 4. USB stick detection & simulation
+const {
+  isUsbConnected,
+  usbDevices,
+  toggleUsbSimulation
+} = useUsbDetection();
 
 // "Tester un saut": picks another scientific satellite to test page change / healing!
 const handleTestJump = () => {

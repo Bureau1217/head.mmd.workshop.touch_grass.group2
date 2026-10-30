@@ -19,6 +19,17 @@
     </div>
 
     <div class="app-header__right">
+      <!-- USB stick detection: Red dot indicator at top of page -->
+      <div
+        v-if="isUsbConnected"
+        class="app-header__usb"
+        :title="usbTooltip"
+      >
+        <span class="app-header__usb-dot" />
+        <span class="app-header__usb-label">USB</span>
+      </div>
+      <span v-if="isUsbConnected" class="app-header__sep">/</span>
+
       <span class="app-header__stat">
         {{ visibleCount }} satellites overhead
       </span>
@@ -27,16 +38,33 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{
-  userLat: number;
-  userLon: number;
-  deviceAzimuth: number;
-  visibleCount: number;
-}>();
+import { computed } from 'vue';
+import type { UsbDevice } from '~/types/usb';
+
+const props = withDefaults(
+  defineProps<{
+    userLat: number;
+    userLon: number;
+    deviceAzimuth: number;
+    visibleCount: number;
+    isUsbConnected?: boolean;
+    usbDevices?: UsbDevice[];
+  }>(),
+  {
+    isUsbConnected: false,
+    usbDevices: () => []
+  }
+);
 
 const emit = defineEmits<{
   (e: 'toggleOverlay'): void;
 }>();
+
+const usbTooltip = computed<string>(() => {
+  if (!props.isUsbConnected) return 'Aucune clé USB détectée';
+  if (props.usbDevices.length === 0) return 'Clé USB connectée';
+  return `Clé USB connectée : ${props.usbDevices.map((d) => d.name).join(', ')}`;
+});
 </script>
 
 <style lang="scss" scoped>
@@ -85,10 +113,51 @@ const emit = defineEmits<{
   &__right {
     display: flex;
     align-items: center;
+    gap: $spacing-sm;
+  }
+
+  &__usb {
+    display: inline-flex;
+    align-items: center;
+    gap: $spacing-xs;
+    cursor: default;
+    user-select: none;
+  }
+
+  &__usb-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: $radius-full;
+    background-color: $color-usb-dot;
+    box-shadow: 0 0 6px $color-usb-glow;
+    display: inline-block;
+    animation: usb-pulse 2s infinite ease-in-out;
+  }
+
+  &__usb-label {
+    color: $color-usb-dot;
+    font-weight: 700;
+    font-size: $font-size-xs;
+    letter-spacing: 0.05em;
   }
 
   &__stat {
     color: $color-text-muted;
+  }
+}
+
+@keyframes usb-pulse {
+  0% {
+    transform: scale(0.9);
+    box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.7);
+  }
+  70% {
+    transform: scale(1.15);
+    box-shadow: 0 0 0 6px rgba(255, 59, 48, 0);
+  }
+  100% {
+    transform: scale(0.9);
+    box-shadow: 0 0 0 0 rgba(255, 59, 48, 0);
   }
 }
 </style>

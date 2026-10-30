@@ -23,6 +23,9 @@
           <div class="app-wiki-article__texte">
             <!-- Scientific Satellite Status & Reason -->
             <div class="app-wiki-article__line">
+              <span v-if="isUsbConnected" class="app-wiki-article__badge app-wiki-article__badge--usb">
+                Clé USB branchée
+              </span>
               <span v-if="isHealed" class="app-wiki-article__badge app-wiki-article__badge--healed">Page guérie</span>
               <span v-else-if="isTotallyBroken" class="app-wiki-article__badge app-wiki-article__badge--broken">Signal détruit</span>
               <span v-else-if="(breakdownProgress || 0) >= 0.7" class="app-wiki-article__badge app-wiki-article__badge--broken" style="background: rgba(220, 53, 69, 0.15); color: #c82333;">
@@ -82,6 +85,15 @@
             >
               Tester un saut
             </button>
+            <button
+              type="button"
+              class="app-wiki-article__btn"
+              :class="{ 'app-wiki-article__btn--usb': isUsbConnected }"
+              title="Raccourci clavier : touche U"
+              @click="emit('toggleUsbSimulation')"
+            >
+              {{ isUsbConnected ? 'Retirer clé USB (test)' : 'Brancher clé USB (test)' }}
+            </button>
             <a
               :href="urlOuvrir"
               target="_blank"
@@ -110,6 +122,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import type { NearestSatellite } from '~/types/satellite';
+import type { UsbDevice } from '~/types/usb';
 import {
   crossWord,
   confidentialRedact,
@@ -146,15 +159,20 @@ const props = withDefaults(
     isHealed: boolean;
     healedBySatName: string | null;
     isLoading: boolean;
+    isUsbConnected?: boolean;
+    usbDevices?: UsbDevice[];
   }>(),
   {
     showOverlay: false,
-    activeDwellsList: () => []
+    activeDwellsList: () => [],
+    isUsbConnected: false,
+    usbDevices: () => []
   }
 );
 
 const emit = defineEmits<{
   (e: 'testJump'): void;
+  (e: 'toggleUsbSimulation'): void;
   (e: 'closeOverlay'): void;
 }>();
 
@@ -1622,6 +1640,11 @@ watch(
       background: $color-commercial;
       color: $color-white;
     }
+
+    &--usb {
+      background: $color-usb-dot;
+      color: $color-white;
+    }
   }
 
   &__etat {
@@ -1752,6 +1775,17 @@ watch(
     &:hover {
       border-color: $color-text;
       background: $color-surface-hover;
+    }
+
+    &--usb {
+      border-color: $color-usb-dot;
+      color: $color-usb-dot;
+      font-weight: 600;
+
+      &:hover {
+        background: rgba(255, 59, 48, 0.08);
+        border-color: $color-usb-dot;
+      }
     }
   }
 
