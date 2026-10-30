@@ -303,6 +303,15 @@ const ensureAttackStyles = (doc: Document) => {
       opacity: 0.65 !important;
       transition: opacity 0.2s ease !important;
     }
+    /* Totally broken signal: all image URLs broken and images completely hidden */
+    body.is-signal-broken img,
+    body.is-signal-broken figure img,
+    body.is-signal-broken picture img,
+    body.is-signal-broken .mw-file-element,
+    body.is-signal-broken .thumbimage {
+      display: none !important;
+      visibility: hidden !important;
+    }
     /* Flyby earthquake tremor animation inside iframe:
        Subtle, low-amplitude physical vibration peaking at ~1.5px without nauseating screen tilting */
     @keyframes iframe-earthquake {
@@ -735,12 +744,13 @@ const collapseImageToBrokenIcon = (wrap: HTMLElement, doc: Document) => {
 // A single satellite traverses the screen along an inclined diagonal path,
 // affecting BOTH text (flipping characters to '0') and images (drawing glare streaks) in its path.
 // When in transit, it triggers an earthquake vibration and organic oscillator rumble matching the flyby envelope.
-// When too many lines (>= 2) cross a specific image, that image collapses into the failed-to-load broken icon state.
+// Lines continue to cross the screen as force escalates (including during critical interference) until total breakdown.
 const applyCombinedSatellitePass = (doc: Document, force: number, isReplay: boolean = false) => {
   if (!doc || !doc.body) return;
   ensureAttackStyles(doc);
 
-  const targetRayCount = Math.min(10, Math.max(1, force));
+  // Keep generating lines continuously until total breakdown (up to 40 passes across the page)
+  const targetRayCount = Math.min(40, Math.max(1, force));
 
   let trackerContainer = doc.getElementById('app-wiki-article-orbit-tracker') as HTMLElement | null;
   if (!trackerContainer) {
@@ -1256,9 +1266,50 @@ const applyProgressiveBreakdown = (doc: Document, progress: number, isTotallyBro
   `;
 };
 
+// Breaks all image URLs and collapses all images on the page when signal is totally broken
+const breakAllImages = (doc: Document) => {
+  if (!doc || !doc.body) return;
+
+  doc.body.classList.add('is-signal-broken');
+
+  const allImages = Array.from(doc.querySelectorAll<HTMLImageElement>('img')).filter((img) => {
+    const src = img.getAttribute('src') || '';
+    if (src.includes('badge') || src.includes('icon') || src.includes('symbol')) return false;
+    return true;
+  });
+
+  allImages.forEach((img) => {
+    // 1. Preserve original URL if not saved
+    if (!img.getAttribute('data-orig-src')) {
+      img.setAttribute('data-orig-src', img.getAttribute('src') || '');
+    }
+
+    // 2. Corrupt and break the image URL so it cannot load
+    img.setAttribute('src', 'broken-signal://packet-loss-corrupted');
+    img.removeAttribute('srcset');
+    img.style.setProperty('display', 'none', 'important');
+    img.style.setProperty('visibility', 'hidden', 'important');
+
+    // 3. Find or create wrapper and collapse into broken image icon
+    let wrapper = img.parentElement as HTMLElement | null;
+    if (wrapper) {
+      if (!wrapper.classList.contains('app-wiki-article__image-wrap') && !wrapper.closest('figure, .thumbinner, .mw-file-description')) {
+        const wrap = doc.createElement('div');
+        wrap.className = 'app-wiki-article__image-wrap';
+        wrap.style.cssText = 'position: relative; display: inline-block; overflow: hidden; vertical-align: top;';
+        img.replaceWith(wrap);
+        wrap.appendChild(img);
+        wrapper = wrap;
+      }
+      collapseImageToBrokenIcon(wrapper, doc);
+    }
+  });
+};
+
 // Apply total breakdown overlay style on critical limit reached:
 const applyTotalBreakdown = (doc: Document) => {
   applyProgressiveBreakdown(doc, 1.0, true);
+  breakAllImages(doc);
 };
 
 // Heal document in place without reloading
@@ -1268,6 +1319,19 @@ const healDoc = (doc: Document) => {
   doc.getElementById('satellite-glitch-svg-defs')?.remove();
   doc.getElementById('satellite-glitch-overlay')?.remove();
   doc.body?.classList.remove('is-earthquake');
+  doc.body?.classList.remove('is-signal-broken');
+
+  // Restore original image URLs
+  doc.querySelectorAll<HTMLImageElement>('img').forEach((img) => {
+    const orig = img.getAttribute('data-orig-src');
+    if (orig) {
+      img.setAttribute('src', orig);
+      img.removeAttribute('data-orig-src');
+      img.style.display = '';
+      img.style.visibility = '';
+    }
+  });
+
   const imageStyle = doc.getElementById('satellite-attack-image-filter');
   if (imageStyle) {
     imageStyle.textContent = `
@@ -1337,8 +1401,8 @@ const syncActiveAttacks = (isReplay: boolean = false) => {
     }
   }
 
-  // Cap at 10 passes to maintain visual quality
-  totalCombinedForce = Math.min(10, totalCombinedForce);
+  // Keep making lines continuously until total breakdown (up to 40 passes across the page)
+  totalCombinedForce = Math.min(40, totalCombinedForce);
 
   if (totalCombinedForce > 0) {
     applyCombinedSatellitePass(doc, totalCombinedForce, isReplay);
