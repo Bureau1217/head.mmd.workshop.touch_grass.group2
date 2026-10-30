@@ -134,12 +134,11 @@
     <Transition name="banner-slide">
       <aside v-if="isSecondUsbConnected" class="app-wiki-article__saved-banner">
         <span class="app-wiki-article__saved-dot" />
-        <div class="app-wiki-article__saved-text">
-          <strong class="app-wiki-article__saved-title">DONNÉES SCIENTIFIQUES SAUVEGARDÉES</strong>
-          <span class="app-wiki-article__saved-desc">
-            L'article a été exporté au format Markdown (.md). Les attaques de satellites sont en pause jusqu'au retrait de la clé USB.
-          </span>
-        </div>
+        <span class="app-wiki-article__saved-title">données scientifiques sauvegardées</span>
+        <span class="app-wiki-article__saved-sep">/</span>
+        <span class="app-wiki-article__saved-desc">archive markdown exportée (.md)</span>
+        <span class="app-wiki-article__saved-sep">/</span>
+        <span class="app-wiki-article__saved-status">attaques suspendues (retirer la clé USB pour reprendre)</span>
       </aside>
     </Transition>
 
@@ -1604,48 +1603,59 @@ watch(
     top: $spacing-md;
     left: 50%;
     transform: translateX(-50%);
-    z-index: 100;
-    display: flex;
+    z-index: 90;
+    display: inline-flex;
     align-items: center;
-    gap: $spacing-md;
-    padding: $spacing-sm $spacing-lg;
-    background: rgba(17, 17, 17, 0.94);
-    border: 1px solid $color-usb-dot;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35), 0 0 12px rgba(255, 59, 48, 0.25);
+    gap: $spacing-sm;
+    padding: 6px 14px;
+    background: rgba(255, 255, 255, 0.96);
     backdrop-filter: blur(8px);
-    border-radius: $radius-md;
-    color: #ffffff;
+    border: 1px solid $color-border;
+    border-radius: $radius-sm;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
     font-family: $font-mono;
+    font-size: $font-size-xs;
+    color: $color-text;
     user-select: none;
-    max-width: 90vw;
+    white-space: nowrap;
+    max-width: calc(100vw - 32px);
+
+    @media (max-width: $breakpoint-md) {
+      white-space: normal;
+      flex-wrap: wrap;
+      justify-content: center;
+      text-align: center;
+    }
   }
 
   &__saved-dot {
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
     border-radius: $radius-full;
-    background: $color-usb-dot;
-    box-shadow: 0 0 8px $color-usb-dot;
+    background-color: $color-usb-dot;
+    box-shadow: 0 0 6px $color-usb-glow;
     flex-shrink: 0;
-    animation: usb-pulse 1.8s infinite ease-in-out;
-  }
-
-  &__saved-text {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
+    display: inline-block;
+    animation: usb-pulse 2s infinite ease-in-out;
   }
 
   &__saved-title {
-    font-size: $font-size-xs;
     font-weight: 700;
-    color: #ffffff;
-    letter-spacing: 0.06em;
+    color: $color-text;
+    letter-spacing: -0.01em;
+  }
+
+  &__saved-sep {
+    color: $color-text-faint;
   }
 
   &__saved-desc {
-    font-size: 11px;
-    color: #cccccc;
+    color: $color-text-muted;
+  }
+
+  &__saved-status {
+    color: $color-usb-dot;
+    font-weight: 600;
   }
 
   &__overlay-backdrop {

@@ -17,3 +17,15 @@ body {
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
 }
+
+// Hide Nuxt DevTools floating trigger pill at bottom of page
+#nuxt-devtools-container,
+[data-nuxt-devtools],
+div:has(> iframe[src*="__nuxt_devtools__"]),
+iframe[src*="__nuxt_devtools__"],
+.nuxt-devtools-pill {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  opacity: 0 !important;
+}

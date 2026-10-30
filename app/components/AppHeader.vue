@@ -6,7 +6,7 @@
         title="Double-cliquez pour afficher les informations de mission et d'interférence"
         @dblclick="emit('toggleOverlay')"
       >
-        touch grass
+        SATpedia
       </span>
       <span class="app-header__sep">/</span>
       <span class="app-header__coords">
