@@ -8,11 +8,13 @@
       :user-lon="userLon"
       :device-azimuth="deviceAzimuth"
       :visible-count="visibleSatellites.length"
+      @toggle-overlay="toggleOverlay"
     />
 
     <!-- Main Content: Full-page Wikipedia iframe layout with real orbital logic -->
     <main class="app-main">
       <AppWikiArticle
+        :show-overlay="isOverlayOpen"
         :closest-scientific="closestScientific"
         :current-title="currentTitle"
         :url-cadre="urlCadre"
@@ -29,13 +31,27 @@
         :healed-by-sat-name="healedBySatName"
         :is-loading="isWikiLoading"
         @test-jump="handleTestJump"
+        @close-overlay="isOverlayOpen = false"
       />
     </main>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
+
+// Overlay state (toggled by double clicking "touch grass" title)
+const isOverlayOpen = ref(false);
+
+const toggleOverlay = () => {
+  isOverlayOpen.value = !isOverlayOpen.value;
+};
+
+const handleKeyDown = (e: KeyboardEvent) => {
+  if (e.key === 'Escape' && isOverlayOpen.value) {
+    isOverlayOpen.value = false;
+  }
+};
 
 // 1. Device compass & GPS coordinates
 const {
@@ -94,10 +110,12 @@ const handleTestJump = () => {
 
 onMounted(() => {
   startTracking();
+  window.addEventListener('keydown', handleKeyDown);
 });
 
 onUnmounted(() => {
   stopTracking();
+  window.removeEventListener('keydown', handleKeyDown);
 });
 </script>
 

@@ -1,7 +1,13 @@
 <template>
   <header class="app-header">
     <div class="app-header__left">
-      <span class="app-header__title">touch grass</span>
+      <span
+        class="app-header__title"
+        title="Double-cliquez pour afficher les informations de mission et d'interférence"
+        @dblclick="emit('toggleOverlay')"
+      >
+        touch grass
+      </span>
       <span class="app-header__sep">/</span>
       <span class="app-header__coords">
         {{ userLat.toFixed(2) }}°N, {{ userLon.toFixed(2) }}°E
@@ -26,6 +32,10 @@ defineProps<{
   userLon: number;
   deviceAzimuth: number;
   visibleCount: number;
+}>();
+
+const emit = defineEmits<{
+  (e: 'toggleOverlay'): void;
 }>();
 </script>
 
@@ -54,6 +64,13 @@ defineProps<{
     font-weight: 700;
     color: $color-text;
     letter-spacing: -0.02em;
+    cursor: pointer;
+    user-select: none;
+    transition: color $transition-fast;
+
+    &:hover {
+      color: $color-primary;
+    }
   }
 
   &__sep {

@@ -1,73 +1,93 @@
 <template>
   <div class="app-wiki-article">
-    <!-- Top Control & Status Bar (matching WikiArticle.vue layout) -->
-    <div class="app-wiki-article__barre">
-      <div class="app-wiki-article__texte">
-        <!-- Scientific Satellite Status & Reason -->
-        <div class="app-wiki-article__line">
-          <span v-if="isHealed" class="app-wiki-article__badge app-wiki-article__badge--healed">Page guérie</span>
-          <span v-else-if="isTotallyBroken" class="app-wiki-article__badge app-wiki-article__badge--broken">Signal détruit</span>
-          <span v-else-if="activeCommercialCount > 0" class="app-wiki-article__badge app-wiki-article__badge--attacked">
-            {{ activeCommercialCount }} {{ activeCommercialCount === 1 ? 'brouilleur actif' : 'brouilleurs actifs' }} (Niv. {{ maxForce }}/10)
-          </span>
-          <span v-else-if="attackLog.length > 0" class="app-wiki-article__badge app-wiki-article__badge--attacked">
-            Dégâts persistants (Niv. {{ maxForce }}/10)
-          </span>
+    <!-- Sticky Overlay: appears only when double-clicking on "touch grass" title in AppHeader -->
+    <Transition name="overlay-fade">
+      <div
+        v-if="showOverlay"
+        class="app-wiki-article__overlay-backdrop"
+        @click.self="emit('closeOverlay')"
+      >
+        <div class="app-wiki-article__overlay">
+          <div class="app-wiki-article__overlay-header">
+            <span class="app-wiki-article__overlay-title">Surveillance orbitale &amp; Interférences</span>
+            <button
+              type="button"
+              class="app-wiki-article__overlay-close"
+              title="Fermer le panneau (Échap ou double-clic sur le titre)"
+              @click="emit('closeOverlay')"
+            >
+              ✕
+            </button>
+          </div>
 
-          <span v-if="closestScientific" class="app-wiki-article__etat">
-            <strong>{{ closestScientific.name }}</strong> passe au-dessus de toi ({{ closestScientific.distance }} km, {{ closestScientific.elevation }}°).
-          </span>
-          <span v-else class="app-wiki-article__etat">
-            Recherche d'un satellite scientifique au-dessus de l'horizon...
-          </span>
+          <div class="app-wiki-article__texte">
+            <!-- Scientific Satellite Status & Reason -->
+            <div class="app-wiki-article__line">
+              <span v-if="isHealed" class="app-wiki-article__badge app-wiki-article__badge--healed">Page guérie</span>
+              <span v-else-if="isTotallyBroken" class="app-wiki-article__badge app-wiki-article__badge--broken">Signal détruit</span>
+              <span v-else-if="activeCommercialCount > 0" class="app-wiki-article__badge app-wiki-article__badge--attacked">
+                {{ activeCommercialCount }} {{ activeCommercialCount === 1 ? 'brouilleur actif' : 'brouilleurs actifs' }} (Niv. {{ maxForce }}/10)
+              </span>
+              <span v-else-if="attackLog.length > 0" class="app-wiki-article__badge app-wiki-article__badge--attacked">
+                Dégâts persistants (Niv. {{ maxForce }}/10)
+              </span>
 
-          <span v-if="closestScientific" class="app-wiki-article__raison">
-            Mission : « {{ closestScientific.purpose }} » — Article : {{ currentTitle }}.
-          </span>
-        </div>
+              <span v-if="closestScientific" class="app-wiki-article__etat">
+                <strong>{{ closestScientific.name }}</strong> passe au-dessus de toi ({{ closestScientific.distance }} km, {{ closestScientific.elevation }}°).
+              </span>
+              <span v-else class="app-wiki-article__etat">
+                Recherche d'un satellite scientifique au-dessus de l'horizon...
+              </span>
 
-        <!-- Commercial Satellites Dwell & Escalation Strip -->
-        <div v-if="activeDwellsList && activeDwellsList.length > 0" class="app-wiki-article__attacks-strip">
-          <span class="app-wiki-article__attacks-label">Interférences commerciales en cours :</span>
-          <span
-            v-for="item in activeDwellsList"
-            :key="item.name"
-            class="app-wiki-article__attack-chip"
-            :class="[
-              `app-wiki-article__attack-chip--${item.attackType}`,
-              { 'app-wiki-article__attack-chip--exited': !item.inZone }
-            ]"
-          >
-            <span v-if="item.inZone" class="app-wiki-article__live-dot" />
-            <strong>{{ item.name }}</strong>
-            <span v-if="item.inZone" class="app-wiki-article__dwell">({{ item.dwellSeconds }}s en zone)</span>
-            <span v-else class="app-wiki-article__dwell-exited">(Sorti • Persistant)</span>
-            → {{ formatAttackName(item.attackType) }}
-            <span v-if="item.force > 0" class="app-wiki-article__force">Force {{ item.force }}/10</span>
-            <span v-else class="app-wiki-article__force app-wiki-article__force--intro">Approche</span>
-          </span>
+              <span v-if="closestScientific" class="app-wiki-article__raison">
+                Mission : « {{ closestScientific.purpose }} » — Article : {{ currentTitle }}.
+              </span>
+            </div>
+
+            <!-- Commercial Satellites Dwell & Escalation Strip -->
+            <div v-if="activeDwellsList && activeDwellsList.length > 0" class="app-wiki-article__attacks-strip">
+              <span class="app-wiki-article__attacks-label">Interférences commerciales en cours :</span>
+              <span
+                v-for="item in activeDwellsList"
+                :key="item.name"
+                class="app-wiki-article__attack-chip"
+                :class="[
+                  `app-wiki-article__attack-chip--${item.attackType}`,
+                  { 'app-wiki-article__attack-chip--exited': !item.inZone }
+                ]"
+              >
+                <span v-if="item.inZone" class="app-wiki-article__live-dot" />
+                <strong>{{ item.name }}</strong>
+                <span v-if="item.inZone" class="app-wiki-article__dwell">({{ item.dwellSeconds }}s en zone)</span>
+                <span v-else class="app-wiki-article__dwell-exited">(Sorti • Persistant)</span>
+                → {{ formatAttackName(item.attackType) }}
+                <span v-if="item.force > 0" class="app-wiki-article__force">Force {{ item.force }}/10</span>
+                <span v-else class="app-wiki-article__force app-wiki-article__force--intro">Approche</span>
+              </span>
+            </div>
+          </div>
+
+          <!-- Action buttons -->
+          <div class="app-wiki-article__actions">
+            <button
+              type="button"
+              class="app-wiki-article__btn"
+              @click="emit('testJump')"
+            >
+              Tester un saut
+            </button>
+            <a
+              :href="urlOuvrir"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="app-wiki-article__link"
+            >
+              Ouvrir sur Wikipédia ↗
+            </a>
+          </div>
         </div>
       </div>
-
-      <!-- Action buttons -->
-      <div class="app-wiki-article__actions">
-        <button
-          type="button"
-          class="app-wiki-article__btn"
-          @click="emit('testJump')"
-        >
-          Tester un saut
-        </button>
-        <a
-          :href="urlOuvrir"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="app-wiki-article__link"
-        >
-          Ouvrir sur Wikipédia ↗
-        </a>
-      </div>
-    </div>
+    </Transition>
 
     <!-- Le vrai site Wikipédia s'affiche ici via srcdoc stable sans rechargement flash -->
     <iframe
@@ -100,26 +120,34 @@ import {
   type CommercialSatelliteDwell
 } from '~/attackScript';
 
-const props = defineProps<{
-  closestScientific: NearestSatellite | null;
-  currentTitle: string;
-  urlCadre: string;
-  urlOuvrir: string;
-  cleanHtml: string;
-  attackedHtml: string;
-  imageFilter: string;
-  attackLog: AttackEvent[];
-  latestAttack: AttackEvent | null;
-  activeDwellsList?: CommercialSatelliteDwell[];
-  isTotallyBroken: boolean;
-  criticalSatelliteLimit: number;
-  isHealed: boolean;
-  healedBySatName: string | null;
-  isLoading: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    showOverlay?: boolean;
+    closestScientific: NearestSatellite | null;
+    currentTitle: string;
+    urlCadre: string;
+    urlOuvrir: string;
+    cleanHtml: string;
+    attackedHtml: string;
+    imageFilter: string;
+    attackLog: AttackEvent[];
+    latestAttack: AttackEvent | null;
+    activeDwellsList?: CommercialSatelliteDwell[];
+    isTotallyBroken: boolean;
+    criticalSatelliteLimit: number;
+    isHealed: boolean;
+    healedBySatName: string | null;
+    isLoading: boolean;
+  }>(),
+  {
+    showOverlay: false,
+    activeDwellsList: () => []
+  }
+);
 
 const emit = defineEmits<{
-  testJump: [];
+  (e: 'testJump'): void;
+  (e: 'closeOverlay'): void;
 }>();
 
 const iframeRef = ref<HTMLIFrameElement | null>(null);
@@ -770,9 +798,45 @@ const applyFallingLetters = (doc: Document, force: number) => {
   applyTextAttack(doc, fallingLetters, force);
 };
 
-// Apply total breakdown overlay style on critical limit reached with smooth fade
+// Apply total breakdown overlay style on critical limit reached:
+// Applies a dynamic glitch filter on the whole page without altering page colors or blurring images
 const applyTotalBreakdown = (doc: Document) => {
   if (!doc || !doc.head) return;
+
+  // 1. Inject SVG glitch displacement filters into the iframe if not already present
+  if (!doc.getElementById('satellite-glitch-svg-defs')) {
+    const glitchDefs = doc.createElement('div');
+    glitchDefs.id = 'satellite-glitch-svg-defs';
+    glitchDefs.style.cssText = 'position: absolute; width: 0; height: 0; pointer-events: none; overflow: hidden;';
+    glitchDefs.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <filter id="satellite-glitch-displace-1" x="0%" y="0%" width="100%" height="100%">
+            <feTurbulence type="fractalNoise" baseFrequency="0.04 0.9" numOctaves="1" result="noise" />
+            <feDisplacementMap in="SourceGraphic" in2="noise" scale="14" xChannelSelector="R" yChannelSelector="G" />
+          </filter>
+          <filter id="satellite-glitch-displace-2" x="0%" y="0%" width="100%" height="100%">
+            <feTurbulence type="fractalNoise" baseFrequency="0.02 0.75" numOctaves="2" result="noise" />
+            <feDisplacementMap in="SourceGraphic" in2="noise" scale="22" xChannelSelector="G" yChannelSelector="R" />
+          </filter>
+          <filter id="satellite-glitch-displace-3" x="0%" y="0%" width="100%" height="100%">
+            <feTurbulence type="fractalNoise" baseFrequency="0.06 0.98" numOctaves="1" result="noise" />
+            <feDisplacementMap in="SourceGraphic" in2="noise" scale="32" xChannelSelector="B" yChannelSelector="B" />
+          </filter>
+        </defs>
+      </svg>
+    `;
+    (doc.body || doc.documentElement).appendChild(glitchDefs);
+  }
+
+  // 2. Inject CRT scanlines & chromatic horizontal tear bars overlay
+  if (!doc.getElementById('satellite-glitch-overlay') && doc.body) {
+    const glitchOverlay = doc.createElement('div');
+    glitchOverlay.id = 'satellite-glitch-overlay';
+    doc.body.appendChild(glitchOverlay);
+  }
+
+  // 3. Inject glitch CSS animation on the whole page without altering base colors or blurring images
   let styleEl = doc.getElementById('satellite-breakdown-style') as HTMLStyleElement | null;
   if (!styleEl) {
     styleEl = doc.createElement('style');
@@ -780,32 +844,141 @@ const applyTotalBreakdown = (doc: Document) => {
     doc.head.appendChild(styleEl);
   }
   styleEl.textContent = `
-    body {
-      background-color: #050505 !important;
-      color: #333333 !important;
-      filter: invert(100%) !important;
-      transition: filter 2.5s ease-in-out, background-color 2.5s ease-in-out, color 2.5s ease-in-out !important;
+    /* Full-page digital signal glitch filter without altering colors or blurring images */
+    html, body {
+      animation: page-glitch-jitter 2.6s infinite steps(1) !important;
+      will-change: transform, filter !important;
     }
-    img, figure, picture, .mw-file-element, .thumbimage {
-      filter: blur(28px) brightness(15%) contrast(20%) grayscale(100%) !important;
-      transition: filter 2.5s ease-in-out !important;
+    @keyframes page-glitch-jitter {
+      0% {
+        transform: none;
+        filter: none;
+      }
+      6% {
+        transform: translate(-3px, 1px) skewX(-0.6deg);
+        filter: url(#satellite-glitch-displace-1);
+      }
+      9% {
+        transform: translate(4px, -1px) skewX(0.8deg);
+        filter: url(#satellite-glitch-displace-2);
+      }
+      12% {
+        transform: none;
+        filter: none;
+      }
+      30% {
+        transform: translate(2px, 0) skewX(0.4deg);
+        filter: url(#satellite-glitch-displace-1);
+      }
+      33% {
+        transform: translate(-5px, 2px) skewX(-1.2deg);
+        filter: url(#satellite-glitch-displace-3);
+      }
+      36% {
+        transform: none;
+        filter: none;
+      }
+      57% {
+        transform: translate(-2px, -1px);
+        filter: url(#satellite-glitch-displace-1);
+      }
+      60% {
+        transform: translate(3px, 1px) skewX(0.7deg);
+        filter: url(#satellite-glitch-displace-2);
+      }
+      63% {
+        transform: none;
+        filter: none;
+      }
+      80% {
+        transform: translate(-4px, 0) skewX(-0.9deg);
+        filter: url(#satellite-glitch-displace-3);
+      }
+      83% {
+        transform: translate(2px, -1px) skewX(0.4deg);
+        filter: url(#satellite-glitch-displace-1);
+      }
+      86% {
+        transform: none;
+        filter: none;
+      }
+      100% {
+        transform: none;
+        filter: none;
+      }
     }
-    .app-wiki-article__censor {
-      color: #ffffff !important;
-      transition: color 2.5s ease-in-out !important;
+    #satellite-glitch-overlay {
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      width: 100vw !important;
+      height: 100vh !important;
+      pointer-events: none !important;
+      z-index: 999999 !important;
+      background: repeating-linear-gradient(
+        0deg,
+        rgba(0, 0, 0, 0.05) 0px,
+        rgba(0, 0, 0, 0.05) 1px,
+        transparent 1px,
+        transparent 3px
+      ) !important;
+      animation: glitch-scanline-flicker 0.12s infinite steps(2) !important;
     }
-    .app-wiki-article__censor::after {
-      background-color: #ffffff !important;
-      box-shadow: 0 0 1px #ffffff !important;
-      transition: background-color 2.5s ease-in-out !important;
+    #satellite-glitch-overlay::before,
+    #satellite-glitch-overlay::after {
+      content: '' !important;
+      position: absolute !important;
+      left: 0 !important;
+      width: 100% !important;
+      pointer-events: none !important;
     }
-    .app-wiki-article__strike::after {
-      background-color: #ffffff !important;
-      transition: background-color 2.5s ease-in-out !important;
+    #satellite-glitch-overlay::before {
+      top: 25% !important;
+      height: 14px !important;
+      background: rgba(0, 240, 255, 0.16) !important;
+      mix-blend-mode: color-dodge !important;
+      animation: glitch-bar-sweep 1.8s infinite steps(1) !important;
     }
-    .app-wiki-article__char-zero {
-      color: #ffffff !important;
-      text-shadow: 0 0 4px #ffffff !important;
+    #satellite-glitch-overlay::after {
+      top: 65% !important;
+      height: 8px !important;
+      background: rgba(255, 0, 80, 0.16) !important;
+      mix-blend-mode: color-dodge !important;
+      animation: glitch-bar-sweep-2 2.3s infinite steps(1) !important;
+    }
+    @keyframes glitch-scanline-flicker {
+      0% {
+        opacity: 0.85;
+        transform: translateY(0);
+      }
+      50% {
+        opacity: 0.45;
+        transform: translateY(1px);
+      }
+      100% {
+        opacity: 0.9;
+        transform: translateY(-1px);
+      }
+    }
+    @keyframes glitch-bar-sweep {
+      0% { top: 18%; height: 6px; transform: translateX(-8px); opacity: 0; }
+      12% { top: 32%; height: 16px; transform: translateX(12px); opacity: 0.85; }
+      15% { opacity: 0; }
+      35% { top: 72%; height: 10px; transform: translateX(-18px); opacity: 0.9; }
+      38% { opacity: 0; }
+      72% { top: 48%; height: 22px; transform: translateX(8px); opacity: 0.8; }
+      75% { opacity: 0; }
+      100% { opacity: 0; }
+    }
+    @keyframes glitch-bar-sweep-2 {
+      0% { top: 60%; height: 12px; transform: translateX(6px); opacity: 0; }
+      22% { top: 12%; height: 8px; transform: translateX(-14px); opacity: 0.75; }
+      25% { opacity: 0; }
+      52% { top: 85%; height: 18px; transform: translateX(20px); opacity: 0.85; }
+      55% { opacity: 0; }
+      88% { top: 38%; height: 14px; transform: translateX(-10px); opacity: 0.8; }
+      91% { opacity: 0; }
+      100% { opacity: 0; }
     }
   `;
 };
@@ -814,6 +987,8 @@ const applyTotalBreakdown = (doc: Document) => {
 const healDoc = (doc: Document) => {
   if (!doc) return;
   doc.getElementById('satellite-breakdown-style')?.remove();
+  doc.getElementById('satellite-glitch-svg-defs')?.remove();
+  doc.getElementById('satellite-glitch-overlay')?.remove();
   const imageStyle = doc.getElementById('satellite-attack-image-filter');
   if (imageStyle) {
     imageStyle.textContent = `
@@ -983,24 +1158,80 @@ watch(
 @use "~/assets/variables" as *;
 
 .app-wiki-article {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1;
   width: 100%;
-  height: calc(100vh - 54px);
+  height: 100%;
   overflow: hidden;
 
-  &__barre {
+  &__overlay-backdrop {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1000;
+    background: rgba(0, 0, 0, 0.24);
+    backdrop-filter: blur(2px);
     display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px 16px;
-    padding: 10px 16px;
-    background: $color-surface;
-    border-bottom: 1px solid $color-border;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 16px;
+    overflow-y: auto;
+  }
+
+  &__overlay {
+    position: sticky;
+    top: 0;
+    width: 100%;
+    max-width: 980px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px 18px;
+    background: rgba(255, 255, 255, 0.98);
+    backdrop-filter: blur(14px);
+    border: 1px solid $color-border;
+    border-radius: $radius-md;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.18);
     font-family: $font-mono;
     font-size: $font-size-xs;
-    flex-shrink: 0;
+  }
+
+  &__overlay-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid $color-border;
+    padding-bottom: 8px;
+  }
+
+  &__overlay-title {
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    color: $color-text-muted;
+  }
+
+  &__overlay-close {
+    background: transparent;
+    border: none;
+    font: inherit;
+    font-size: 15px;
+    cursor: pointer;
+    color: $color-text-muted;
+    padding: 2px 8px;
+    line-height: 1;
+    border-radius: $radius-sm;
+    transition: all $transition-fast;
+
+    &:hover {
+      color: $color-primary;
+      background: $color-surface-hover;
+    }
   }
 
   &__texte {
@@ -1008,7 +1239,7 @@ watch(
     min-width: 260px;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 8px;
   }
 
   &__line {
@@ -1200,6 +1431,25 @@ watch(
   100% {
     transform: scale(0.85);
     opacity: 0.4;
+  }
+}
+
+.overlay-fade-enter-active,
+.overlay-fade-leave-active {
+  transition: opacity 0.22s ease;
+
+  .app-wiki-article__overlay {
+    transition: transform 0.24s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease;
+  }
+}
+
+.overlay-fade-enter-from,
+.overlay-fade-leave-to {
+  opacity: 0;
+
+  .app-wiki-article__overlay {
+    opacity: 0;
+    transform: translateY(-12px) scale(0.98);
   }
 }
 </style>

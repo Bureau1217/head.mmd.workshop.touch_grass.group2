@@ -74,10 +74,10 @@ export const FORCE_INCREASE_INTERVAL_SECONDS = 10;
 export const MAX_FORCE_LEVEL = 10;
 
 export function calculateDwellForce(dwellSeconds: number): number {
-  if (dwellSeconds <= 0) return 0;
-  // Force 1 triggers immediately on presence in zone (1s - 9s)
-  // Force escalates by +1 every 10 seconds of presence (10s: Force 2, 20s: Force 3, ...)
-  return Math.min(MAX_FORCE_LEVEL, 1 + Math.floor(dwellSeconds / FORCE_INCREASE_INTERVAL_SECONDS));
+  // 10 seconds grace period before the first attack (0s to 9s: Force 0 / Approche)
+  if (dwellSeconds < FORCE_INCREASE_INTERVAL_SECONDS) return 0;
+  // Escalates by +1 every 10 seconds of presence (10s: Force 1, 20s: Force 2, ...)
+  return Math.min(MAX_FORCE_LEVEL, Math.floor(dwellSeconds / FORCE_INCREASE_INTERVAL_SECONDS));
 }
 
 export const useWikipedia = (
