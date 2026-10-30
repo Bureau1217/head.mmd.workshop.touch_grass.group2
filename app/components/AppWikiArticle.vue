@@ -12,11 +12,11 @@
       >
         <div class="app-wiki-article__overlay">
           <div class="app-wiki-article__overlay-header">
-            <span class="app-wiki-article__overlay-title">Surveillance orbitale &amp; Interférences</span>
+            <span class="app-wiki-article__overlay-title">Orbital Surveillance &amp; Interference</span>
             <button
               type="button"
               class="app-wiki-article__overlay-close"
-              title="Fermer le panneau (Échap ou double-clic sur le titre)"
+              title="Close panel (Esc or double-click on title)"
               @click="emit('closeOverlay')"
             >
               ✕
@@ -27,41 +27,41 @@
             <!-- Scientific Satellite Status & Reason -->
             <div class="app-wiki-article__line">
               <span v-if="isSecondUsbConnected" class="app-wiki-article__badge app-wiki-article__badge--usb-dual">
-                Données scientifiques sauvegardées • Attaques en pause
+                Scientific data saved • Attacks paused
               </span>
               <span v-else-if="isUsbConnected" class="app-wiki-article__badge app-wiki-article__badge--usb">
-                Clé USB branchée
+                USB drive connected
               </span>
-              <span v-if="isHealed" class="app-wiki-article__badge app-wiki-article__badge--healed">Page guérie</span>
-              <span v-else-if="isTotallyBroken" class="app-wiki-article__badge app-wiki-article__badge--broken">Signal détruit</span>
+              <span v-if="isHealed" class="app-wiki-article__badge app-wiki-article__badge--healed">Page healed</span>
+              <span v-else-if="isTotallyBroken" class="app-wiki-article__badge app-wiki-article__badge--broken">Signal destroyed</span>
               <span v-else-if="(breakdownProgress || 0) >= 0.7" class="app-wiki-article__badge app-wiki-article__badge--broken" style="background: rgba(220, 53, 69, 0.15); color: #c82333;">
-                Interférence critique ({{ Math.round((breakdownProgress || 0) * 100) }}%)
+                Critical interference ({{ Math.round((breakdownProgress || 0) * 100) }}%)
               </span>
               <span v-else-if="(breakdownProgress || 0) >= 0.35" class="app-wiki-article__badge app-wiki-article__badge--attacked" style="background: rgba(255, 152, 0, 0.15); color: #e65100;">
-                Interférence modérée ({{ Math.round((breakdownProgress || 0) * 100) }}%)
+                Moderate interference ({{ Math.round((breakdownProgress || 0) * 100) }}%)
               </span>
               <span v-else-if="activeCommercialCount > 0" class="app-wiki-article__badge app-wiki-article__badge--attacked">
-                {{ activeCommercialCount }} {{ activeCommercialCount === 1 ? 'brouilleur actif' : 'brouilleurs actifs' }} (Niv. {{ maxForce }}/10)
+                {{ activeCommercialCount }} {{ activeCommercialCount === 1 ? 'active jammer' : 'active jammers' }} (Lvl {{ maxForce }}/10)
               </span>
               <span v-else-if="attackLog.length > 0" class="app-wiki-article__badge app-wiki-article__badge--attacked">
-                Dégâts persistants (Niv. {{ maxForce }}/10)
+                Persistent damage (Lvl {{ maxForce }}/10)
               </span>
 
               <span v-if="closestScientific" class="app-wiki-article__etat">
-                <strong>{{ closestScientific.name }}</strong> passe au-dessus de toi ({{ closestScientific.distance }} km, {{ closestScientific.elevation }}°).
+                <strong>{{ closestScientific.name }}</strong> is passing overhead ({{ closestScientific.distance }} km, {{ closestScientific.elevation }}°).
               </span>
               <span v-else class="app-wiki-article__etat">
-                Recherche d'un satellite scientifique au-dessus de l'horizon...
+                Searching for a scientific satellite above the horizon...
               </span>
 
               <span v-if="closestScientific" class="app-wiki-article__raison">
-                Mission : « {{ closestScientific.purpose }} » — Article : {{ currentTitle }}.
+                Mission: "{{ closestScientific.purpose }}" — Article: {{ currentTitle }}.
               </span>
             </div>
 
             <!-- Commercial Satellites Dwell & Escalation Strip -->
             <div v-if="activeDwellsList && activeDwellsList.length > 0" class="app-wiki-article__attacks-strip">
-              <span class="app-wiki-article__attacks-label">Interférences commerciales en cours :</span>
+              <span class="app-wiki-article__attacks-label">Active commercial interference:</span>
               <span
                 v-for="item in activeDwellsList"
                 :key="item.name"
@@ -73,11 +73,11 @@
               >
                 <span v-if="item.inZone" class="app-wiki-article__live-dot" />
                 <strong>{{ item.name }}</strong>
-                <span v-if="item.inZone" class="app-wiki-article__dwell">({{ item.dwellSeconds }}s en zone)</span>
-                <span v-else class="app-wiki-article__dwell-exited">(Sorti • Persistant)</span>
+                <span v-if="item.inZone" class="app-wiki-article__dwell">({{ item.dwellSeconds }}s in zone)</span>
+                <span v-else class="app-wiki-article__dwell-exited">(Exited • Persistent)</span>
                 → {{ formatAttackName(item.attackType) }}
                 <span v-if="item.force > 0" class="app-wiki-article__force">Force {{ item.force }}/10</span>
-                <span v-else class="app-wiki-article__force app-wiki-article__force--intro">Approche (attaque dans {{ Math.max(0, (item.initialDelaySeconds || 10) - item.dwellSeconds) }}s)</span>
+                <span v-else class="app-wiki-article__force app-wiki-article__force--intro">Approach (attack in {{ Math.max(0, (item.initialDelaySeconds || 10) - item.dwellSeconds) }}s)</span>
               </span>
             </div>
           </div>
@@ -89,7 +89,7 @@
               class="app-wiki-article__btn"
               @click="emit('testJump')"
             >
-              Tester un saut
+              Test Jump
             </button>
             <button
               type="button"
@@ -98,24 +98,24 @@
                 'app-wiki-article__btn--usb': isUsbConnected && !isSecondUsbConnected,
                 'app-wiki-article__btn--usb-dual': isSecondUsbConnected
               }"
-              title="Raccourci clavier : touche U (cycle 0 → 1 → 2 → 0)"
+              title="Keyboard shortcut: U key (cycle 0 → 1 → 2 → 0)"
               @click="emit('toggleUsbSimulation')"
             >
               {{
                 isSecondUsbConnected
-                  ? 'Retirer 2ème clé (reprendre les attaques)'
+                  ? 'Remove 2nd USB (resume attacks)'
                   : isUsbConnected
-                    ? 'Brancher 2ème clé (sauvegarder & pause)'
-                    : 'Brancher 1ère clé (Test)'
+                    ? 'Plug 2nd USB (save & pause)'
+                    : 'Plug 1st USB (Test)'
               }}
             </button>
             <button
               type="button"
               class="app-wiki-article__btn"
-              title="Télécharger l'article Wikipédia actuel au format Markdown"
+              title="Download current Wikipedia article as Markdown"
               @click="emit('downloadMarkdown')"
             >
-              Télécharger .md
+              Download .md
             </button>
             <a
               :href="urlOuvrir"
@@ -123,14 +123,14 @@
               rel="noopener noreferrer"
               class="app-wiki-article__link"
             >
-              Ouvrir sur Wikipédia ↗
+              Open on Wikipedia ↗
             </a>
           </div>
         </div>
       </div>
     </Transition>
 
-    <!-- Popup centré: Données scientifiques sauvegardées (2 clés USB) -->
+    <!-- Centered popup: Scientific data saved (2 USB sticks) -->
     <Transition name="modal-pop">
       <div
         v-if="isSecondUsbConnected && showSavedModal"
@@ -143,101 +143,102 @@
           aria-modal="true"
           aria-labelledby="saved-modal-title"
         >
-          <!-- En-tête de la boîte de dialogue -->
+          <!-- Header -->
           <div class="app-wiki-article__saved-modal-header">
             <div class="app-wiki-article__saved-modal-tag">
               <span class="app-wiki-article__saved-dot" />
               <span class="app-wiki-article__saved-dot app-wiki-article__saved-dot--second" />
-              <span>ARCHIVAGE DE SECOURS // 2 CLÉS DÉTECTÉES</span>
+              <span>EMERGENCY BACKUP // 2 USB DRIVES DETECTED</span>
             </div>
             <button
               type="button"
               class="app-wiki-article__saved-modal-close"
-              title="Fermer la boîte de dialogue (Échap ou clic extérieur)"
+              title="Close dialog (Esc or click outside)"
               @click="showSavedModal = false"
             >
               ✕
             </button>
           </div>
 
-          <!-- Contenu principal -->
+          <!-- Main content -->
           <div class="app-wiki-article__saved-modal-body">
             <h2 id="saved-modal-title" class="app-wiki-article__saved-modal-title">
-              Données scientifiques sauvegardées
+              Scientific Data Saved
             </h2>
             <p class="app-wiki-article__saved-modal-desc">
-              L'article scientifique en cours a été capturé avec succès et archivé localement au format Markdown (<code>.md</code>).
+              The current scientific article was successfully captured and downloaded to your machine as Markdown (<code>.md</code>).
             </p>
 
             <div class="app-wiki-article__saved-modal-grid">
               <div class="app-wiki-article__saved-modal-card">
-                <span class="app-wiki-article__saved-modal-card-label">Statut du signal</span>
+                <span class="app-wiki-article__saved-modal-card-label">Signal Status</span>
                 <span class="app-wiki-article__saved-modal-card-val app-wiki-article__saved-modal-card-val--alert">
-                  Attaques suspendues (Pause active)
+                  Attacks Suspended (Active Pause)
                 </span>
               </div>
               <div class="app-wiki-article__saved-modal-card">
-                <span class="app-wiki-article__saved-modal-card-label">Article archivé</span>
+                <span class="app-wiki-article__saved-modal-card-label">Archived Article</span>
                 <span class="app-wiki-article__saved-modal-card-val">
-                  {{ currentTitle || 'Article Wikipédia' }}
+                  {{ currentTitle || 'Wikipedia Article' }}
                 </span>
               </div>
               <div class="app-wiki-article__saved-modal-card">
-                <span class="app-wiki-article__saved-modal-card-label">Action requise</span>
+                <span class="app-wiki-article__saved-modal-card-label">Required Action</span>
                 <span class="app-wiki-article__saved-modal-card-val">
-                  Retirer la seconde clé USB pour réactiver les interférences
+                  Remove the second USB drive to resume interference
                 </span>
               </div>
             </div>
           </div>
 
-          <!-- Boutons d'action -->
+          <!-- Action buttons -->
           <div class="app-wiki-article__saved-modal-footer">
             <button
               type="button"
               class="app-wiki-article__saved-btn app-wiki-article__saved-btn--primary"
               @click="emit('downloadMarkdown')"
             >
-              Télécharger à nouveau (.md) ↓
+              Download Again (.md) ↓
             </button>
             <button
               type="button"
               class="app-wiki-article__saved-btn app-wiki-article__saved-btn--secondary"
               @click="showSavedModal = false"
             >
-              Continuer la lecture
+              Continue Reading
             </button>
           </div>
         </div>
       </div>
     </Transition>
 
-    <!-- Mini-bandeau discret en haut lorsque la modale est minimisée/fermée -->
+    <!-- Minimized top banner when popup is closed -->
     <Transition name="banner-slide">
       <aside
         v-if="isSecondUsbConnected && !showSavedModal"
         class="app-wiki-article__saved-banner"
-        title="Cliquer pour afficher les détails de la sauvegarde"
+        title="Click to view full backup report"
         @click="showSavedModal = true"
       >
         <span class="app-wiki-article__saved-dot" />
         <span class="app-wiki-article__saved-dot app-wiki-article__saved-dot--second" />
-        <span class="app-wiki-article__saved-title">données scientifiques sauvegardées</span>
+        <span class="app-wiki-article__saved-title">scientific data saved</span>
         <span class="app-wiki-article__saved-sep">/</span>
-        <span class="app-wiki-article__saved-desc">attaques suspendues</span>
+        <span class="app-wiki-article__saved-desc">attacks suspended</span>
         <span class="app-wiki-article__saved-sep">/</span>
-        <span class="app-wiki-article__saved-action">afficher les détails ↗</span>
+        <span class="app-wiki-article__saved-action">view details ↗</span>
       </aside>
     </Transition>
 
-    <!-- Le vrai site Wikipédia s'affiche ici via srcdoc stable sans rechargement flash -->
+    <!-- Real Wikipedia iframe -->
     <iframe
       id="cadre"
       ref="iframeRef"
       class="app-wiki-article__cadre"
       :srcdoc="cleanHtml"
-      title="Article Wikipédia"
+      title="Wikipedia Article"
       @load="handleIframeLoad"
+    />
     />
   </div>
 </template>
@@ -402,13 +403,13 @@ const maxForce = computed(() => {
 });
 
 const formatAttackName = (type: AttackType): string => {
-  if (type === 'satellitePass') return 'Passage Orbital (Texte & Images)';
-  if (type === 'qualityLossImage') return 'Dégradation Image (Pixels)';
-  if (type === 'raysImage') return 'Rayures Satellite (Blanches)';
-  if (type === 'raysText') return 'Trace Orbitale (Zéros)';
-  if (type === 'fallingLetters') return 'Chute de Lettres (Gravité)';
-  if (type === 'confidentialRedact') return 'Fichier Confidentiel (Noir)';
-  if (type === 'crossWord') return 'Rayer mots (Barre)';
+  if (type === 'satellitePass') return 'Orbital Pass (Text & Images)';
+  if (type === 'qualityLossImage') return 'Image Degradation (Pixels)';
+  if (type === 'raysImage') return 'Satellite Streaks (White)';
+  if (type === 'raysText') return 'Orbital Trail (Zeros)';
+  if (type === 'fallingLetters') return 'Falling Letters (Gravity)';
+  if (type === 'confidentialRedact') return 'Confidential Redact (Blackout)';
+  if (type === 'crossWord') return 'Strikethrough Words';
   return type;
 };
 

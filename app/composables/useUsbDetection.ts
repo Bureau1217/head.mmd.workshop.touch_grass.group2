@@ -32,7 +32,7 @@ export const useUsbDetection = () => {
     // Add simulated devices if simulation is active and hardware hasn't already provided them
     if (simulatedCount.value >= 1 && list.length < 1) {
       list.push({
-        name: 'Clé USB #1 (Alpha)',
+        name: 'USB Drive #1 (Alpha)',
         type: 'simulated',
         deviceId: 'SIM-USB-01'
       });
@@ -40,7 +40,7 @@ export const useUsbDetection = () => {
 
     if (simulatedCount.value >= 2 && list.length < 2) {
       list.push({
-        name: 'Clé USB #2 (Sauvegarde & Pause)',
+        name: 'USB Drive #2 (Backup & Pause)',
         type: 'simulated',
         deviceId: 'SIM-USB-02'
       });

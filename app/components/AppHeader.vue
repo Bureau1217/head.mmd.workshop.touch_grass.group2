@@ -3,7 +3,7 @@
     <div class="app-header__left">
       <span
         class="app-header__title"
-        title="Double-cliquez pour afficher les informations de mission et d'interférence"
+        title="Double-click to display mission and orbital interference telemetry"
         @dblclick="emit('toggleOverlay')"
       >
         SATpedia
@@ -32,7 +32,7 @@
           class="app-header__usb-dot app-header__usb-dot--second"
         />
         <span class="app-header__usb-label">
-          {{ isSecondUsbConnected ? 'USB 2/2 • SAUVEGARDÉ' : 'USB' }}
+          {{ isSecondUsbConnected ? 'USB 2/2 • SAVED' : 'USB' }}
         </span>
       </div>
       <span v-if="isUsbConnected" class="app-header__sep">/</span>
@@ -70,15 +70,15 @@ const emit = defineEmits<{
 }>();
 
 const usbTooltip = computed<string>(() => {
-  if (!props.isUsbConnected) return 'Aucune clé USB détectée';
+  if (!props.isUsbConnected) return 'No USB drive detected';
   if (props.isSecondUsbConnected) {
     const list = props.usbDevices.length > 0
       ? ` : ${props.usbDevices.map((d) => d.name).join(', ')}`
       : '';
-    return `2 clés USB connectées — Données scientifiques sauvegardées, attaques en pause${list}`;
+    return `2 USB drives connected — Scientific data saved, attacks paused${list}`;
   }
-  if (props.usbDevices.length === 0) return 'Clé USB connectée';
-  return `Clé USB connectée : ${props.usbDevices.map((d) => d.name).join(', ')}`;
+  if (props.usbDevices.length === 0) return 'USB drive connected';
+  return `USB drive connected: ${props.usbDevices.map((d) => d.name).join(', ')}`;
 });
 </script>
 

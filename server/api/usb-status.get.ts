@@ -65,7 +65,7 @@ function detectUsbWindows(): Promise<UsbStatusResponse> {
             if (disk?.DeviceID) {
               const name = disk.VolumeName
                 ? `${disk.VolumeName} (${disk.DeviceID})`
-                : `Clé USB (${disk.DeviceID})`;
+                : `USB Drive (${disk.DeviceID})`;
               devices.push({
                 name,
                 deviceId: disk.DeviceID,
@@ -88,7 +88,7 @@ function detectUsbWindows(): Promise<UsbStatusResponse> {
               const drive = physicalList[devices.length + i];
               if (drive) {
                 devices.push({
-                  name: drive.Model?.trim() || `Clé USB #${devices.length + 1}`,
+                  name: drive.Model?.trim() || `USB Drive #${devices.length + 1}`,
                   deviceId: drive.DeviceID,
                   type: 'usb-drive'
                 });

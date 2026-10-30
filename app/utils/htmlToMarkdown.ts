@@ -152,33 +152,33 @@ export function htmlToMarkdown(html: string): string {
  */
 export function generateArticleMarkdown(meta: ArticleMarkdownMeta): string {
   const now = new Date();
-  const dateFormatted = now.toLocaleString('fr-CH', {
+  const dateFormatted = now.toLocaleString('en-US', {
     dateStyle: 'full',
     timeStyle: 'medium'
   });
 
   const displayTitle = meta.title.replace(/_/g, ' ');
-  const wikiUrl = meta.sourceUrl || `https://fr.wikipedia.org/wiki/${encodeURIComponent(meta.title.replace(/ /g, '_'))}`;
+  const wikiUrl = meta.sourceUrl || `https://en.wikipedia.org/wiki/${encodeURIComponent(meta.title.replace(/ /g, '_'))}`;
 
   const header = [
     `# ${displayTitle}`,
     '',
-    `> **Archive Touch Grass — Sauvegarde des données scientifiques**`,
-    `> Ce document a été sauvegardé automatiquement lors de la détection de la **seconde clé USB**, mettant en pause les interférences de satellites.`,
+    `> **Touch Grass Archive — Scientific Data Backup**`,
+    `> This document was automatically archived upon detecting the **second USB drive**, suspending satellite orbital interference.`,
     '',
-    '## 📡 Télémétrie au moment de la capture',
-    `- **Date & Heure :** ${dateFormatted}`,
-    `- **URL Source :** ${wikiUrl}`,
-    meta.satName ? `- **Satellite scientifique au zénith :** ${meta.satName}` : null,
-    meta.satPurpose ? `- **Mission scientifique :** ${meta.satPurpose}` : null,
+    '## 📡 Telemetry at Capture Time',
+    `- **Date & Time:** ${dateFormatted}`,
+    `- **Source URL:** ${wikiUrl}`,
+    meta.satName ? `- **Zenith Scientific Satellite:** ${meta.satName}` : null,
+    meta.satPurpose ? `- **Scientific Mission:** ${meta.satPurpose}` : null,
     meta.userLat !== undefined && meta.userLon !== undefined
-      ? `- **Position observateur :** ${meta.userLat.toFixed(4)}°N, ${meta.userLon.toFixed(4)}°E (Genève, HEAD)`
+      ? `- **Observer Location:** ${meta.userLat.toFixed(4)}°N, ${meta.userLon.toFixed(4)}°E (Geneva, HEAD)`
       : null,
-    `- **État matériel :** 2 clés USB connectées (Attaques en pause)`,
+    `- **Hardware State:** 2 USB drives connected (Attacks suspended)`,
     '',
     '---',
     '',
-    '## 📄 Contenu de l\'article',
+    '## 📄 Article Content',
     ''
   ]
     .filter((line) => line !== null)
@@ -190,7 +190,7 @@ export function generateArticleMarkdown(meta: ArticleMarkdownMeta): string {
     '',
     '---',
     '',
-    `*Touch Grass (Atelier Master Media Design, HEAD – Genève) — Archive satellite exportée le ${now.toISOString()}*`
+    `*Touch Grass (Master Media Design Workshop, HEAD – Geneva) — Satellite archive exported on ${now.toISOString()}*`
   ].join('\n');
 
   return `${header}\n${content}\n${footer}`;

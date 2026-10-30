@@ -25,7 +25,7 @@ interface WikiSearchResponse {
 const ATTACK_OPTIONS: AttackType[] = [
   'satellitePass'
 ];
-const DOMAINE = 'fr.wikipedia.org';
+const DOMAINE = 'en.wikipedia.org';
 
 // Helper to safely attack only text nodes in HTML without touching markup or tags
 function attackHtmlText(html: string, attackFn: (text: string, force: number) => string, force: number): string {
@@ -97,9 +97,9 @@ export const useWikipedia = (
   userLat?: Ref<number>,
   userLon?: Ref<number>
 ) => {
-  const currentTitle = ref<string>('Satellite_artificiel');
-  const urlCadre = ref<string>(`https://${DOMAINE}/wiki/Satellite_artificiel`);
-  const urlOuvrir = ref<string>(`https://${DOMAINE}/wiki/Satellite_artificiel`);
+  const currentTitle = ref<string>('Artificial_satellite');
+  const urlCadre = ref<string>(`https://${DOMAINE}/wiki/Artificial_satellite`);
+  const urlOuvrir = ref<string>(`https://${DOMAINE}/wiki/Artificial_satellite`);
 
   const cleanHtml = ref<string>('');
   const attackedHtml = ref<string>('');
@@ -167,29 +167,29 @@ export const useWikipedia = (
     return breakdownProgress.value >= 1;
   });
 
-  // French mappings for satellite mission purposes
-  const PURPOSE_MAP_FR: Record<string, string> = {
-    'earth observation': 'Satellite d\'observation de la Terre',
-    'meteorology': 'Satellite météorologique',
-    'meteorological': 'Satellite météorologique',
-    'science': 'Satellite scientifique',
-    'astronomy': 'Télescope spatial',
-    'astrophysics': 'Astrophysique',
-    'geodesy': 'Géodésie',
-    'navigation': 'Système de positionnement par satellites',
-    'solar': 'Observatoire solaire',
-    'space weather': 'Météorologie de l\'espace',
-    'climate': 'Climatologie',
-    'oceanography': 'Océanographie spatiale',
-    'research': 'Recherche spatiale'
+  // English mappings for satellite mission purposes
+  const PURPOSE_MAP_EN: Record<string, string> = {
+    'earth observation': 'Earth observation satellite',
+    'meteorology': 'Weather satellite',
+    'meteorological': 'Weather satellite',
+    'science': 'Scientific satellite',
+    'astronomy': 'Space telescope',
+    'astrophysics': 'Astrophysics',
+    'geodesy': 'Geodesy',
+    'navigation': 'Satellite navigation',
+    'solar': 'Solar astronomy',
+    'space weather': 'Space weather',
+    'climate': 'Climatology',
+    'oceanography': 'Oceanography',
+    'research': 'Space exploration'
   };
 
   const resolveTargetQuery = (purpose: string, name: string): string => {
     const purposeLower = (purpose || '').toLowerCase();
-    let query = PURPOSE_MAP_FR[purposeLower];
+    let query = PURPOSE_MAP_EN[purposeLower];
 
     if (!query) {
-      for (const [key, mapping] of Object.entries(PURPOSE_MAP_FR)) {
+      for (const [key, mapping] of Object.entries(PURPOSE_MAP_EN)) {
         if (purposeLower.includes(key)) {
           query = mapping;
           break;
@@ -221,10 +221,10 @@ export const useWikipedia = (
     try {
       const query = resolveTargetQuery(sat.purpose, sat.name);
 
-      // 1. Search Wikipedia (FR)
+      // 1. Search Wikipedia (EN)
       const searchUrl = `https://${DOMAINE}/w/api.php?format=json&origin=*&action=query&list=search&srnamespace=0&srlimit=10&srsearch=${encodeURIComponent(query)}`;
       const searchRes = await $fetch<WikiSearchResponse>(searchUrl);
-      const targetTitle = searchRes.query?.search?.[0]?.title || 'Satellite artificiel';
+      const targetTitle = searchRes.query?.search?.[0]?.title || 'Artificial satellite';
 
       currentTitle.value = targetTitle;
       const wikiPath = `/wiki/${encodeURIComponent(targetTitle.replace(/ /g, '_'))}`;
@@ -245,7 +245,7 @@ export const useWikipedia = (
         healedBySatName.value = null;
 
         // Fetch full HTML through our server route
-        const html = await $fetch<string>(`/api/wiki-html?title=${encodeURIComponent(targetTitle)}&lang=fr`);
+        const html = await $fetch<string>(`/api/wiki-html?title=${encodeURIComponent(targetTitle)}&lang=en`);
         cleanHtml.value = html;
         attackedHtml.value = html;
 
@@ -256,7 +256,7 @@ export const useWikipedia = (
       previousArticleTitle.value = targetTitle;
     } catch (err: unknown) {
       console.warn('[useWikipedia] Error fetching article:', err);
-      fetchError.value = 'Impossible de charger l\'article Wikipédia.';
+      fetchError.value = 'Failed to load Wikipedia article.';
     } finally {
       isLoading.value = false;
     }

@@ -430,6 +430,6 @@ export default defineEventHandler(async (event): Promise<string> => {
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn(`[wiki-html] Failed to fetch article "${title}":`, msg);
-    return `<!DOCTYPE html><html><head><base href="https://${lang}.wikipedia.org/"></head><body><h1>${title}</h1><p>Impossible de charger l'article complet.</p></body></html>`;
+    return `<!DOCTYPE html><html><head><base href="https://${lang}.wikipedia.org/"></head><body><h1>${title}</h1><p>Failed to load full article.</p></body></html>`;
   }
 });
