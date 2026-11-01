@@ -464,7 +464,7 @@ const ensureAttackStyles = (doc: Document) => {
       overflow: hidden;
     }
     /* Collapsed Broken Image Placeholder (Signal Lost / Missing Image Icon) */
-    .app-wiki-article__image-wrap.is-collapsed {
+    .is-collapsed {
       display: inline-flex !important;
       align-items: center !important;
       justify-content: center !important;
@@ -476,9 +476,9 @@ const ensureAttackStyles = (doc: Document) => {
       transition: all 0.25s ease-out !important;
       overflow: hidden !important;
     }
-    .app-wiki-article__image-wrap.is-collapsed img,
-    .app-wiki-article__image-wrap.is-collapsed .app-wiki-article__image-orbit-svg,
-    .app-wiki-article__image-wrap.is-collapsed .app-wiki-article__rays-overlay {
+    .is-collapsed img,
+    .is-collapsed .app-wiki-article__image-orbit-svg,
+    .is-collapsed .app-wiki-article__rays-overlay {
       display: none !important;
       visibility: hidden !important;
     }
@@ -672,11 +672,9 @@ const ensureAttackStyles = (doc: Document) => {
     @keyframes draw-image-orbit-streak {
       0% {
         stroke-dashoffset: var(--image-orbit-len, 1000);
-        opacity: 1;
       }
       100% {
         stroke-dashoffset: 0;
-        opacity: 0.88;
       }
     }
     /* Falling Letters Attack: letters rip free and drop down with gravity */
@@ -911,6 +909,8 @@ const collapseImageToBrokenIcon = (wrap: HTMLElement, doc: Document) => {
   const imgW = Math.max(80, wrap.clientWidth || originalImg?.clientWidth || 220);
   const imgH = Math.max(60, wrap.clientHeight || originalImg?.clientHeight || 150);
 
+  wrap.querySelectorAll('.app-wiki-article__image-orbit-svg, .app-wiki-article__rays-overlay').forEach((overlay) => overlay.remove());
+  wrap.classList.add('app-wiki-article__image-wrap');
   wrap.classList.add('is-collapsed');
   wrap.style.width = `${imgW}px`;
   wrap.style.height = `${imgH}px`;
@@ -970,6 +970,8 @@ const applyCombinedSatellitePass = (doc: Document, force: number, isReplay: bool
 
   const imageWrappers: HTMLElement[] = [];
   images.forEach((img) => {
+    if (img.closest('.is-collapsed')) return;
+
     let wrapper = img.parentElement as HTMLElement | null;
     if (!wrapper) return;
 
@@ -1018,14 +1020,24 @@ const applyCombinedSatellitePass = (doc: Document, force: number, isReplay: bool
     groupMarker.setAttribute('data-ray', String(r));
     trackerContainer.appendChild(groupMarker);
 
-    // Vibration & Sound: starts low at entry, swells to zenith at middle, fades away
+    // Vibration, sound, and a slight scroll follow the satellite's direction.
     if (!isReplay) {
+      const startSatellitePass = () => {
+        triggerEarthquake();
+        if (!props.isSecondUsbConnected) {
+          doc.defaultView?.scrollBy({
+            top: Math.sign(y2 - y1) * 1,
+            behavior: 'smooth'
+          });
+        }
+      };
+
       if (passDelaySec > 0) {
         setTimeout(() => {
-          triggerEarthquake();
+          startSatellitePass();
         }, Math.round(passDelaySec * 1000));
       } else {
-        triggerEarthquake();
+        startSatellitePass();
       }
     }
 
@@ -1138,11 +1150,11 @@ const applyCombinedSatellitePass = (doc: Document, force: number, isReplay: bool
     }
 
     // B. AFFECT IMAGES ALONG THIS EXACT PATH
-    imageWrappers.forEach((wrapper) => {
+    imageWrappers.forEach((wrapper, imageIndex) => {
       const img = wrapper.querySelector('img');
       if (!img) return;
 
-      const rect = wrapper.getBoundingClientRect();
+      const rect = img.getBoundingClientRect();
       const rLeft = rect.left;
       const rTop = rect.top + scrollY;
       const rRight = rect.right;
@@ -1156,8 +1168,8 @@ const applyCombinedSatellitePass = (doc: Document, force: number, isReplay: bool
       wrapper.setAttribute('data-hit-count', String(currentHits));
 
       const { t0, t1 } = clipped;
-      const imgW = Math.max(60, wrapper.clientWidth || img.clientWidth || 300);
-      const imgH = Math.max(40, wrapper.clientHeight || img.clientHeight || 200);
+      const imgW = Math.max(60, img.clientWidth || wrapper.clientWidth || 300);
+      const imgH = Math.max(40, img.clientHeight || wrapper.clientHeight || 200);
 
       const segX1 = Math.round(x1 + t0 * (x2 - x1) - rLeft);
       const segY1 = Math.round(y1 + t0 * (y2 - y1) - rTop);
@@ -1188,45 +1200,81 @@ const applyCombinedSatellitePass = (doc: Document, force: number, isReplay: bool
         wrapper.appendChild(svgOverlay);
       }
 
-      const g = doc.createElementNS('http://www.w3.org/2000/svg', 'g');
-      g.setAttribute('class', 'app-wiki-article__image-orbit-group');
-      g.setAttribute('data-ray', String(r));
+      const defs = svgOverlay.querySelector('defs') ?? doc.createElementNS('http://www.w3.org/2000/svg', 'defs');
+      if (!defs.parentNode) svgOverlay.appendChild(defs);
+      let maskId = img.getAttribute('data-erasure-mask-id');
+      let mask = maskId ? defs.querySelector<SVGMaskElement>(`#${maskId}`) : null;
+      if (!mask) {
+        maskId = `app-wiki-image-erasure-${r}-${imageIndex}`;
+        mask = doc.createElementNS('http://www.w3.org/2000/svg', 'mask');
+        mask.setAttribute('id', maskId);
+        mask.setAttribute('maskUnits', 'userSpaceOnUse');
+        mask.setAttribute('maskContentUnits', 'userSpaceOnUse');
+        mask.setAttribute('x', '0');
+        mask.setAttribute('y', '0');
+        mask.setAttribute('width', String(imgW));
+        mask.setAttribute('height', String(imgH));
+        mask.setAttribute('mask-type', 'luminance');
+
+        const base = doc.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        base.setAttribute('width', String(imgW));
+        base.setAttribute('height', String(imgH));
+        base.setAttribute('fill', '#ffffff');
+        mask.appendChild(base);
+        defs.appendChild(mask);
+        img.setAttribute('data-erasure-mask-id', maskId);
+        img.style.setProperty('mask', `url(#${maskId})`, 'important');
+        img.style.setProperty('mask-repeat', 'no-repeat', 'important');
+        img.style.setProperty('-webkit-mask', `url(#${maskId})`, 'important');
+        img.style.setProperty('-webkit-mask-repeat', 'no-repeat', 'important');
+      }
 
       const animStyle = isReplay
         ? ''
         : `animation: draw-image-orbit-streak ${crossDurationSec}s linear forwards; animation-delay: ${totalEntryDelaySec.toFixed(2)}s;`;
       const offset = isReplay ? '0' : String(segLen);
+      const normalX = -(segY2 - segY1) / segLen;
+      const normalY = (segX2 - segX1) / segLen;
+      const edgeGradientId = `app-wiki-image-edge-${r}-${imageIndex}`;
+      const edgeGradient = doc.createElementNS('http://www.w3.org/2000/svg', 'linearGradient');
+      edgeGradient.setAttribute('id', edgeGradientId);
+      edgeGradient.setAttribute('gradientUnits', 'userSpaceOnUse');
+      edgeGradient.setAttribute('x1', String(segX1 - normalX * 12));
+      edgeGradient.setAttribute('y1', String(segY1 - normalY * 12));
+      edgeGradient.setAttribute('x2', String(segX1 + normalX * 12));
+      edgeGradient.setAttribute('y2', String(segY1 + normalY * 12));
 
-      g.innerHTML = `
-        <line
-          x1="${segX1}" y1="${segY1}" x2="${segX2}" y2="${segY2}"
-          stroke="rgba(255, 255, 255, 0.25)"
-          stroke-width="16"
-          stroke-linecap="round"
-          stroke-dasharray="${segLen}"
-          stroke-dashoffset="${offset}"
-          style="--image-orbit-len: ${segLen}; ${animStyle}"
-        />
-        <line
-          x1="${segX1}" y1="${segY1}" x2="${segX2}" y2="${segY2}"
-          stroke="rgba(255, 255, 255, 0.6)"
-          stroke-width="6"
-          stroke-linecap="round"
-          stroke-dasharray="${segLen}"
-          stroke-dashoffset="${offset}"
-          style="--image-orbit-len: ${segLen}; ${animStyle}"
-        />
-        <line
-          x1="${segX1}" y1="${segY1}" x2="${segX2}" y2="${segY2}"
-          stroke="#ffffff"
-          stroke-width="2.2"
-          stroke-linecap="round"
-          stroke-dasharray="${segLen}"
-          stroke-dashoffset="${offset}"
-          style="--image-orbit-len: ${segLen}; ${animStyle}"
-        />
-      `;
-      svgOverlay.appendChild(g);
+      for (const [stopOffset, opacity] of [
+        ['0%', '0'],
+        ['25%', '0.12'],
+        ['40%', '0.7'],
+        ['50%', '1'],
+        ['60%', '0.7'],
+        ['75%', '0.12'],
+        ['100%', '0']
+      ]) {
+        const stop = doc.createElementNS('http://www.w3.org/2000/svg', 'stop');
+        stop.setAttribute('offset', stopOffset);
+        stop.setAttribute('stop-color', '#000000');
+        stop.setAttribute('stop-opacity', opacity);
+        edgeGradient.appendChild(stop);
+      }
+      defs.appendChild(edgeGradient);
+
+      const erasure = doc.createElementNS('http://www.w3.org/2000/svg', 'line');
+      erasure.setAttribute('x1', String(segX1));
+      erasure.setAttribute('y1', String(segY1));
+      erasure.setAttribute('x2', String(segX2));
+      erasure.setAttribute('y2', String(segY2));
+      erasure.setAttribute('stroke', `url(#${edgeGradientId})`);
+      erasure.setAttribute('stroke-width', '16');
+      erasure.setAttribute('stroke-linecap', 'square');
+      erasure.setAttribute('stroke-dasharray', String(segLen));
+      erasure.setAttribute('stroke-dashoffset', offset);
+      erasure.setAttribute('class', 'app-wiki-article__image-erasure');
+      erasure.setAttribute('data-ray', String(r));
+      erasure.setAttribute('style', `--image-orbit-len: ${segLen}; ${animStyle}`);
+      mask.appendChild(erasure);
 
       // When too many lines (>= 3) cross this specific image, it collapses to the failed-to-load broken icon
       if (currentHits >= 3) {
@@ -1522,6 +1570,11 @@ const healDoc = (doc: Document) => {
       img.style.display = '';
       img.style.visibility = '';
     }
+    img.removeAttribute('data-erasure-mask-id');
+    img.style.removeProperty('mask');
+    img.style.removeProperty('mask-repeat');
+    img.style.removeProperty('-webkit-mask');
+    img.style.removeProperty('-webkit-mask-repeat');
   });
 
   const imageStyle = doc.getElementById('satellite-attack-image-filter');

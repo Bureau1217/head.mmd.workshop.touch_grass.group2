@@ -132,8 +132,9 @@ export const useWikipedia = (
   // Healing tracking
   const isHealed = ref<boolean>(false);
   const healedBySatName = ref<string | null>(null);
-  const previousSatName = ref<string>('');
-  const previousArticleTitle = ref<string>('');
+  const usedArticleTitles = new Set<string>(['artificial satellite']);
+
+  const normalizeArticleTitle = (title: string): string => title.replace(/_/g, ' ').trim().toLowerCase();
 
   // State preservation before Starlink override (for 2nd USB stick)
   const savedScientificPage = ref<{
@@ -168,36 +169,35 @@ export const useWikipedia = (
   });
 
   // English mappings for satellite mission purposes
-  const PURPOSE_MAP_EN: Record<string, string> = {
-    'earth observation': 'Earth observation satellite',
-    'meteorology': 'Weather satellite',
-    'meteorological': 'Weather satellite',
-    'science': 'Scientific satellite',
-    'astronomy': 'Space telescope',
-    'astrophysics': 'Astrophysics',
-    'geodesy': 'Geodesy',
-    'navigation': 'Satellite navigation',
-    'solar': 'Solar astronomy',
-    'space weather': 'Space weather',
-    'climate': 'Climatology',
-    'oceanography': 'Oceanography',
-    'research': 'Space exploration'
+  const PURPOSE_MAP_EN: Record<string, string[]> = {
+    'earth observation': ['Earth observation', 'remote sensing', 'Earth scientist'],
+    'meteorology': ['meteorology', 'weather satellite', 'meteorologist'],
+    'meteorological': ['meteorology', 'weather satellite', 'meteorologist'],
+    'science': ['scientific research', 'scientist', 'space science'],
+    'solar astronomy': ['Sun', 'solar physics', 'solar observatory', 'solar physicist'],
+    'astronomy': ['astronomy', 'space telescope', 'astronomer'],
+    'astrophysics': ['astrophysics', 'astrophysicist', 'space telescope'],
+    'geodesy': ['geodesy', 'geodesist', 'Earth measurement'],
+    'navigation': ['satellite navigation', 'global navigation satellite system'],
+    'solar': ['Sun', 'solar physics', 'solar observatory', 'solar physicist'],
+    'space weather': ['space weather', 'solar wind', 'heliophysics'],
+    'climate': ['climate science', 'climatology', 'climate scientist'],
+    'oceanography': ['oceanography', 'ocean observation', 'oceanographer'],
+    'research': ['scientific research', 'scientist', 'space science']
   };
 
-  const resolveTargetQuery = (purpose: string, name: string): string => {
+  const resolveTargetQueries = (purpose: string, name: string): string[] => {
     const purposeLower = (purpose || '').toLowerCase();
-    let query = PURPOSE_MAP_EN[purposeLower];
+    const queries = Object.entries(PURPOSE_MAP_EN)
+      .filter(([key]) => purposeLower.includes(key))
+      .sort(([keyA], [keyB]) => keyB.length - keyA.length)
+      .flatMap(([, mappings]) => mappings);
 
-    if (!query) {
-      for (const [key, mapping] of Object.entries(PURPOSE_MAP_EN)) {
-        if (purposeLower.includes(key)) {
-          query = mapping;
-          break;
-        }
-      }
+    if (queries.length === 0) {
+      queries.push(purpose ? `${purpose} satellite` : name);
     }
 
-    return query || (purpose ? `${purpose} satellite` : name);
+    return [...new Set(queries)].slice(0, 4);
   };
 
   const resetPageAttacks = () => {
@@ -219,41 +219,42 @@ export const useWikipedia = (
     fetchError.value = null;
 
     try {
-      const query = resolveTargetQuery(sat.purpose, sat.name);
+      const queries = resolveTargetQueries(sat.purpose, sat.name);
 
-      // 1. Search Wikipedia (EN)
-      const searchUrl = `https://${DOMAINE}/w/api.php?format=json&origin=*&action=query&list=search&srnamespace=0&srlimit=10&srsearch=${encodeURIComponent(query)}`;
-      const searchRes = await $fetch<WikiSearchResponse>(searchUrl);
-      const targetTitle = searchRes.query?.search?.[0]?.title || 'Artificial satellite';
+      // Search several mission-related angles and keep every result as a fresh-page candidate.
+      const searchResults = await Promise.allSettled(queries.map(async (query) => {
+        const searchUrl = `https://${DOMAINE}/w/api.php?format=json&origin=*&action=query&list=search&srnamespace=0&srlimit=10&srsearch=${encodeURIComponent(query)}`;
+        const searchRes = await $fetch<WikiSearchResponse>(searchUrl);
+        return searchRes.query?.search?.map((result) => result.title) ?? [];
+      }));
+      const successfulSearches = searchResults.filter(
+        (result): result is PromiseFulfilledResult<string[]> => result.status === 'fulfilled'
+      );
+      if (successfulSearches.length === 0) {
+        throw new Error('All Wikipedia searches failed.');
+      }
 
+      const candidateTitles = [...new Map(successfulSearches
+        .flatMap((result) => result.value)
+        .filter((title) => !usedArticleTitles.has(normalizeArticleTitle(title)))
+        .map((title) => [normalizeArticleTitle(title), title] as const)).values()];
+      if (candidateTitles.length === 0) {
+        throw new Error(`No unused Wikipedia articles found for mission: ${sat.purpose || sat.name}`);
+      }
+
+      const targetTitle = candidateTitles[Math.floor(Math.random() * candidateTitles.length)];
+      usedArticleTitles.add(normalizeArticleTitle(targetTitle));
+      const html = await $fetch<string>(`/api/wiki-html?title=${encodeURIComponent(targetTitle)}&lang=en`);
       currentTitle.value = targetTitle;
       const wikiPath = `/wiki/${encodeURIComponent(targetTitle.replace(/ /g, '_'))}`;
       urlCadre.value = `https://${DOMAINE}${wikiPath}`;
       urlOuvrir.value = `https://${DOMAINE}${wikiPath}`;
+      cleanHtml.value = html;
+      attackedHtml.value = html;
 
-      const satChanged = previousSatName.value && previousSatName.value !== sat.name;
-      const pageStaysSame = previousArticleTitle.value && previousArticleTitle.value === targetTitle;
-
-      if (satChanged && pageStaysSame) {
-        // HEAL: nearest scientific satellite changed, but page stays the same!
-        isHealed.value = true;
-        healedBySatName.value = sat.name;
-        resetPageAttacks();
-      } else if (satChanged || !cleanHtml.value) {
-        // Different scientific purpose / page: load new page fresh and clean
-        isHealed.value = false;
-        healedBySatName.value = null;
-
-        // Fetch full HTML through our server route
-        const html = await $fetch<string>(`/api/wiki-html?title=${encodeURIComponent(targetTitle)}&lang=en`);
-        cleanHtml.value = html;
-        attackedHtml.value = html;
-
-        resetPageAttacks();
-      }
-
-      previousSatName.value = sat.name;
-      previousArticleTitle.value = targetTitle;
+      isHealed.value = false;
+      healedBySatName.value = null;
+      resetPageAttacks();
     } catch (err: unknown) {
       console.warn('[useWikipedia] Error fetching article:', err);
       fetchError.value = 'Failed to load Wikipedia article.';

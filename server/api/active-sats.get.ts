@@ -23,24 +23,58 @@ interface KeepTrackSatBrief {
 }
 
 const SCIENTIFIC_KEYWORDS = [
+  'aeronomy',
+  'air density',
+  'altimetry',
+  'asteroid',
+  'astrometry',
   'science',
+  'scientific',
   'earth observation',
-  'meteorolog',
   'astronomy',
   'astrophysics',
+  'atmospheric science',
+  'atmospheric research',
+  'meteorolog',
   'geodesy',
   'research',
+  'cosmology',
+  'comet',
+  'earth science',
+  'earth sciences',
+  'ecology',
+  'environmental',
   'solar',
   'space weather',
   'physics',
+  'fundamental physics',
   'climate',
   'planetary',
+  'lunar',
+  'mars',
+  'mars orbiter',
+  'jupiter polar orbiter',
   'oceanography',
+  'ocean observation',
+  'ocean monitoring',
   'atmospheric',
   'remote sensing',
   'environment',
+  'earth obeservation',
+  'earth obseervation',
   'magnetosphere',
-  'ionosphere'
+  'ionosphere',
+  'ionospheric',
+  'ionospheic',
+  'life science',
+  'life sciences',
+  'gravity field mapping',
+  'radio astronomy',
+  'cosmic rays',
+  'particle imaging',
+  'upper atmosphere',
+  'thermospheric',
+  'whale monitoring'
 ];
 
 const COMMERCIAL_CONSTELLATIONS = [
@@ -57,7 +91,7 @@ const COMMERCIAL_CONSTELLATIONS = [
   'INTELSAT',
   'EUTELSAT',
   'INMARSAT',
-  'O3B'
+  'O3B',
 ];
 
 // Fallback satellites in case KeepTrack API is temporarily unavailable
