@@ -1,6 +1,11 @@
 import { ref, computed, type Ref } from 'vue';
 import { Satellite, GroundStation, type Degrees, type Kilometers } from 'ootk';
-import type { RawSatelliteData, SatellitePosition, NearestSatellite } from '~/types/satellite';
+import type {
+  RawSatelliteData,
+  SatellitePosition,
+  SatelliteMapPosition,
+  NearestSatellite
+} from '~/types/satellite';
 
 export const useSatellites = (
   userLat: Ref<number>,
@@ -11,6 +16,7 @@ export const useSatellites = (
   const closestCommercial = ref<NearestSatellite | null>(null);
   const closestScientific = ref<NearestSatellite | null>(null);
   const visibleSatellites = ref<SatellitePosition[]>([]);
+  const satelliteMapPositions = ref<SatelliteMapPosition[]>([]);
   const isLoading = ref<boolean>(false);
   const lastCalculatedAt = ref<Date | null>(null);
 
@@ -44,15 +50,18 @@ export const useSatellites = (
 
   // Propagate all satellite positions relative to user
   const updatePositions = () => {
-    if (!userLat.value || !userLon.value || cachedSats.value.length === 0) {
+    if (cachedSats.value.length === 0) {
       return;
     }
 
-    const userLocation = new GroundStation({
-      lat: userLat.value as Degrees,
-      lon: userLon.value as Degrees,
-      alt: 0.4 as Kilometers
-    });
+    const hasUserLocation = Number.isFinite(userLat.value) && Number.isFinite(userLon.value);
+    const userLocation = hasUserLocation
+      ? new GroundStation({
+          lat: userLat.value as Degrees,
+          lon: userLon.value as Degrees,
+          alt: 0.4 as Kilometers
+        })
+      : null;
 
     let nearestComm: NearestSatellite | null = null;
     let nearestSci: NearestSatellite | null = null;
@@ -65,6 +74,7 @@ export const useSatellites = (
 
     const visibleList: SatellitePosition[] = [];
     const inZoneList: SatellitePosition[] = [];
+    const mapPositions: SatelliteMapPosition[] = [];
 
     for (const satData of cachedSats.value) {
       try {
@@ -74,7 +84,21 @@ export const useSatellites = (
           tle2: satData.tle2
         });
 
-        const rae = userLocation.rae(sat);
+        const rae = userLocation?.rae(sat) ?? null;
+        const lla = sat.lla();
+        if (lla && Number.isFinite(lla.lat) && Number.isFinite(lla.lon)) {
+          mapPositions.push({
+            name: satData.name,
+            type: satData.type,
+            purpose: satData.purpose,
+            status: satData.status ?? null,
+            latitude: lla.lat,
+            longitude: lla.lon,
+            distance: rae ? Math.round(rae.rng) : null
+          });
+        }
+        if (!userLocation) continue;
+
         if (!rae) continue;
 
         const { rng, az, el } = rae;
@@ -114,7 +138,7 @@ export const useSatellites = (
           visibleList.push(satPos);
 
           if (satData.type === 'commercial') {
-            // Overhead attack zone: within 750 km and elevation >= 15° (passing across the user's sky)
+            // Overhead attack zone: within configured range and elevation >= 15°
             if (rng <= attackZoneRangeKm.value && roundedEl >= 15) {
               inZoneList.push(satPos);
             }
@@ -164,6 +188,7 @@ export const useSatellites = (
     const focusedZoneList = inZoneList.slice(0, 3);
 
     visibleSatellites.value = visibleList;
+    satelliteMapPositions.value = mapPositions;
     commercialSatsInZone.value = focusedZoneList;
     newlyEnteredCommercialSats.value = enteredThisTick;
     closestCommercial.value = nearestComm;
@@ -203,6 +228,7 @@ export const useSatellites = (
     closestCommercial,
     closestScientific,
     visibleSatellites,
+    satelliteMapPositions,
     commercialSatsInZone,
     newlyEnteredCommercialSats,
     attackZoneRangeKm,

@@ -19,6 +19,10 @@
       <AppWikiArticle
         :show-overlay="isOverlayOpen"
         :closest-scientific="closestScientific"
+        :satellite-map-positions="satelliteMapPositions"
+        :user-lat="userLat"
+        :user-lon="userLon"
+        :attack-zone-range-km="attackZoneRangeKm"
         :current-title="currentTitle"
         :url-cadre="urlCadre"
         :url-ouvrir="urlOuvrir"
@@ -28,6 +32,7 @@
         :attack-log="attackLog"
         :latest-attack="latestAttack"
         :active-dwells-list="activeDwellsList"
+        :page-satellite-name="closestScientific?.name ?? null"
         :breakdownProgress="breakdownProgress"
         :is-totally-broken="isTotallyBroken"
         :critical-satellite-limit="criticalSatelliteLimit"
@@ -74,6 +79,8 @@ const {
   closestCommercial,
   closestScientific,
   visibleSatellites,
+  satelliteMapPositions,
+  attackZoneRangeKm,
   commercialSatsInZone,
   newlyEnteredCommercialSats,
   cachedSats,

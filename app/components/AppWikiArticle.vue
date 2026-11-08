@@ -87,6 +87,14 @@
             <button
               type="button"
               class="app-wiki-article__btn"
+              :aria-expanded="isMapOpen"
+              @click="isMapOpen = !isMapOpen"
+            >
+              {{ isMapOpen ? 'Hide satellite map' : 'Satellite map' }}
+            </button>
+            <button
+              type="button"
+              class="app-wiki-article__btn"
               @click="emit('testJump')"
             >
               Test Jump
@@ -129,6 +137,19 @@
         </div>
       </div>
     </Transition>
+
+    <Teleport to="body">
+      <AppSatelliteMap
+        v-if="isMapOpen"
+        :satellites="satelliteMapPositions"
+        :user-lat="userLat"
+        :user-lon="userLon"
+        :attack-zone-range-km="attackZoneRangeKm"
+        :active-dwells-list="activeDwellsList"
+        :page-satellite-name="pageSatelliteName"
+        @close="isMapOpen = false"
+      />
+    </Teleport>
 
     <!-- Centered popup: Scientific data saved (2 USB sticks) -->
     <Transition name="modal-pop">
@@ -245,7 +266,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
-import type { NearestSatellite } from '~/types/satellite';
+import type { NearestSatellite, SatelliteMapPosition } from '~/types/satellite';
 import type { UsbDevice } from '~/types/usb';
 import {
   crossWord,
@@ -268,6 +289,11 @@ const props = withDefaults(
   defineProps<{
     showOverlay?: boolean;
     closestScientific: NearestSatellite | null;
+    satelliteMapPositions: SatelliteMapPosition[];
+    userLat: number;
+    userLon: number;
+    attackZoneRangeKm: number;
+    pageSatelliteName: string | null;
     currentTitle: string;
     urlCadre: string;
     urlOuvrir: string;
@@ -306,6 +332,7 @@ const emit = defineEmits<{
 const iframeRef = ref<HTMLIFrameElement | null>(null);
 const cleanBodyHtml = ref<string>('');
 const isDocReady = ref<boolean>(false);
+const isMapOpen = ref<boolean>(false);
 
 // Earthquake vibration & audio feedback state
 const isVibrating = ref<boolean>(false);
@@ -379,6 +406,9 @@ watch(
 const handleModalKeydown = (e: KeyboardEvent) => {
   if (e.key === 'Escape' && showSavedModal.value) {
     showSavedModal.value = false;
+  }
+  if (e.key === 'Escape' && isMapOpen.value) {
+    isMapOpen.value = false;
   }
 };
 
