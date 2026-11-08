@@ -116,9 +116,10 @@ export const useUsbDetection = () => {
   };
 
   onMounted(() => {
-    // Initial fetch and periodic polling (every 2.5s)
-    pollServerUsbStatus();
-    pollTimer = setInterval(pollServerUsbStatus, 2500);
+    if (import.meta.dev) {
+      pollServerUsbStatus();
+      pollTimer = setInterval(pollServerUsbStatus, 2500);
+    }
 
     // Keyboard shortcut
     window.addEventListener('keydown', handleKeyDown);

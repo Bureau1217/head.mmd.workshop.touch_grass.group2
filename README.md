@@ -1,75 +1,39 @@
-# Nuxt Minimal Starter
+# Touch Grass
 
-Look at the [Nuxt documentation](https://nuxt.com/docs/getting-started/introduction) to learn more.
+Application Nuxt 4 déployée en site statique sur GitHub Pages. Le catalogue satellite passe par le Worker Cloudflare `keeptrack-proxy` ; la clé KeepTrack reste un secret du Worker et n'est jamais incluse dans le site.
 
-## Setup
+## Développement local
 
-Make sure to install dependencies:
-
-```bash
-# npm
-npm install
-
-# pnpm
-pnpm install
-
-# yarn
-yarn install
-
-# bun
-bun install
-```
-
-## Development Server
-
-Start the development server on `http://localhost:3000`:
-
-```bash
-# npm
+```powershell
+npm ci
+Copy-Item .env.example .env
 npm run dev
-
-# pnpm
-pnpm dev
-
-# yarn
-yarn dev
-
-# bun
-bun run dev
 ```
 
-## Production
+Le Worker autorise `http://localhost:3000` pour les essais locaux.
 
-Build the application for production:
+## Déploiement GitHub Pages
 
-```bash
-# npm
-npm run build
+Le workflow `.github/workflows/deploy.yml` génère le site sous le sous-chemin du dépôt et le publie à chaque push sur `main`. Dans les paramètres GitHub du dépôt, choisir **Settings → Pages → Build and deployment → Source → GitHub Actions**.
 
-# pnpm
-pnpm build
+Adresse attendue : <https://bureau1217.github.io/head.mmd.workshop.touch_grass.group2/>.
 
-# yarn
-yarn build
+## Worker Cloudflare et clé API
 
-# bun
-bun run build
+Le Worker est dans le dossier voisin `keeptrack-proxy`. Il lit le secret `KEEPTRACK_KEY` et ne doit jamais recevoir une clé intégrée au site ou à Git.
+
+Depuis ce dossier, définir le secret une seule fois (Cloudflare demande sa valeur dans le terminal), puis déployer le Worker :
+
+```powershell
+npx wrangler secret put KEEPTRACK_KEY
+npm run deploy
 ```
 
-Locally preview production build:
+Le Worker doit autoriser l'origine `https://bureau1217.github.io` et exposer `GET /sats/brief`. L'URL utilisée par le site est `https://keeptrack-proxy.satp.workers.dev`.
 
-```bash
-# npm
-npm run preview
+## Vérification locale
 
-# pnpm
-pnpm preview
-
-# yarn
-yarn preview
-
-# bun
-bun run preview
+```powershell
+npx nuxi typecheck
+npm run generate
 ```
-
-Check out the [deployment documentation](https://nuxt.com/docs/getting-started/deployment) for more information.

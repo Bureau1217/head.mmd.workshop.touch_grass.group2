@@ -243,8 +243,21 @@ export const useWikipedia = (
       }
 
       const targetTitle = candidateTitles[Math.floor(Math.random() * candidateTitles.length)];
+      if (!targetTitle) {
+        throw new Error('No Wikipedia article was selected.');
+      }
       usedArticleTitles.add(normalizeArticleTitle(targetTitle));
-      const html = await $fetch<string>(`/api/wiki-html?title=${encodeURIComponent(targetTitle)}&lang=en`);
+      const articlePath = encodeURIComponent(targetTitle.replace(/ /g, '_'));
+      let html = await $fetch<string>(`https://${DOMAINE}/api/rest_v1/page/html/${articlePath}`, {
+        responseType: 'text'
+      });
+      html = html.replace(/<base\b[^>]*\/?>/gi, '');
+      const baseTag = `<base href="https://${DOMAINE}/">`;
+      if (/<head\b[^>]*>/i.test(html)) {
+        html = html.replace(/<head\b[^>]*>/i, (head) => `${head}${baseTag}`);
+      } else {
+        html = `${baseTag}${html}`;
+      }
       currentTitle.value = targetTitle;
       const wikiPath = `/wiki/${encodeURIComponent(targetTitle.replace(/ /g, '_'))}`;
       urlCadre.value = `https://${DOMAINE}${wikiPath}`;

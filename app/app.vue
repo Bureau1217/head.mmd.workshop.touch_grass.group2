@@ -122,6 +122,7 @@ const handleTestJump = () => {
   const sciSats = cachedSats.value.filter((s) => s.type === 'scientific');
   if (sciSats.length > 1) {
     const randomSat = sciSats[Math.floor(Math.random() * sciSats.length)];
+    if (!randomSat) return;
     closestScientific.value = {
       name: randomSat.name,
       type: 'scientific',

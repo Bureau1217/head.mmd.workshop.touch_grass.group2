@@ -2,16 +2,96 @@ import { ref, computed, type Ref } from 'vue';
 import { Satellite, GroundStation, type Degrees, type Kilometers } from 'ootk';
 import type {
   RawSatelliteData,
+  SatelliteType,
   SatellitePosition,
   SatelliteMapPosition,
   NearestSatellite
 } from '~/types/satellite';
+
+interface KeepTrackSatBrief {
+  tle1?: string;
+  tle2?: string;
+  name?: string;
+  altName?: string;
+  purpose?: string;
+  launchDate?: string;
+  country?: string;
+  status?: string;
+}
+
+const SCIENTIFIC_KEYWORDS = [
+  'aeronomy', 'air density', 'altimetry', 'asteroid', 'astrometry', 'science', 'scientific',
+  'earth observation', 'astronomy', 'astrophysics', 'atmospheric science', 'atmospheric research',
+  'meteorolog', 'geodesy', 'research', 'cosmology', 'comet', 'earth science', 'earth sciences',
+  'ecology', 'environmental', 'solar', 'space weather', 'physics', 'fundamental physics', 'climate',
+  'planetary', 'lunar', 'mars', 'mars orbiter', 'jupiter polar orbiter', 'oceanography',
+  'ocean observation', 'ocean monitoring', 'atmospheric', 'remote sensing', 'environment',
+  'earth obeservation', 'earth obseervation', 'magnetosphere', 'ionosphere', 'ionospheric',
+  'ionospheic', 'life science', 'life sciences', 'gravity field mapping', 'radio astronomy',
+  'cosmic rays', 'particle imaging', 'upper atmosphere', 'thermospheric', 'whale monitoring'
+];
+
+const COMMERCIAL_CONSTELLATIONS = [
+  'STARLINK', 'ONEWEB', 'IRIDIUM', 'GLOBALSTAR', 'PLANET', 'SPIRE', 'FLOCK', 'SKYSAT', 'KUIPER',
+  'SES', 'INTELSAT', 'EUTELSAT', 'INMARSAT', 'O3B'
+];
+
+type TleLine1 = NonNullable<ConstructorParameters<typeof Satellite>[0]['tle1']>;
+type TleLine2 = NonNullable<ConstructorParameters<typeof Satellite>[0]['tle2']>;
+
+const isTleLine1 = (line: string): line is TleLine1 => line.startsWith('1 ');
+const isTleLine2 = (line: string): line is TleLine2 => line.startsWith('2 ');
+
+const classifySatellites = (data: KeepTrackSatBrief[]): RawSatelliteData[] => {
+  const scientific: RawSatelliteData[] = [];
+  const commercial: RawSatelliteData[] = [];
+
+  for (const sat of data) {
+    if (!sat.tle1 || !sat.tle2 || !sat.name) continue;
+
+    const purpose = sat.purpose || '';
+    const purposeLower = purpose.toLowerCase();
+    const nameUpper = sat.name.toUpperCase();
+    const isScientific = SCIENTIFIC_KEYWORDS.some((keyword) => purposeLower.includes(keyword));
+    const isCommercial = COMMERCIAL_CONSTELLATIONS.some((constellation) => nameUpper.includes(constellation)) ||
+      purposeLower.includes('commercial') ||
+      purposeLower.includes('broadcasting') ||
+      (purposeLower.includes('communication') && !purposeLower.includes('military'));
+
+    let type: SatelliteType | null = null;
+    if (isScientific) {
+      type = 'scientific';
+    } else if (isCommercial) {
+      type = 'commercial';
+    }
+    if (!type) continue;
+
+    const satellite: RawSatelliteData = {
+      id: sat.name,
+      name: sat.name,
+      altName: sat.altName,
+      type,
+      purpose: purpose || (type === 'scientific' ? 'Scientific Research' : 'Commercial Communication'),
+      status: sat.status,
+      country: sat.country,
+      launchDate: sat.launchDate,
+      tle1: sat.tle1,
+      tle2: sat.tle2
+    };
+
+    if (type === 'scientific') scientific.push(satellite);
+    else commercial.push(satellite);
+  }
+
+  return [...scientific.slice(0, 600), ...commercial.slice(0, 400)];
+};
 
 export const useSatellites = (
   userLat: Ref<number>,
   userLon: Ref<number>,
   deviceAzimuth?: Ref<number>
 ) => {
+  const { public: { proxyUrl } } = useRuntimeConfig();
   const cachedSats = ref<RawSatelliteData[]>([]);
   const closestCommercial = ref<NearestSatellite | null>(null);
   const closestScientific = ref<NearestSatellite | null>(null);
@@ -37,10 +117,16 @@ export const useSatellites = (
   const loadSatelliteCatalog = async (): Promise<void> => {
     try {
       isLoading.value = true;
-      const data = await $fetch<RawSatelliteData[]>('/api/active-sats');
-      if (Array.isArray(data)) {
-        cachedSats.value = data;
+      const normalizedProxyUrl = proxyUrl.replace(/\/+$/, '');
+      if (!normalizedProxyUrl) {
+        throw new Error('Set NUXT_PUBLIC_PROXY_URL or VITE_PROXY_URL to the Cloudflare Worker URL.');
       }
+
+      const data = await $fetch<KeepTrackSatBrief[]>(`${normalizedProxyUrl}/sats/brief`);
+      if (!Array.isArray(data)) {
+        throw new TypeError('KeepTrack returned an invalid satellite catalog.');
+      }
+      cachedSats.value = classifySatellites(data);
     } catch (err: unknown) {
       console.error('[useSatellites] Error fetching satellite catalog:', err);
     } finally {
@@ -78,6 +164,7 @@ export const useSatellites = (
 
     for (const satData of cachedSats.value) {
       try {
+        if (!isTleLine1(satData.tle1) || !isTleLine2(satData.tle2)) continue;
         const sat = new Satellite({
           name: satData.name,
           tle1: satData.tle1,

@@ -908,15 +908,19 @@ function clipLineToRect(
   let t0 = 0;
   let t1 = 1;
 
-  const p = [-dx, dx, -dy, dy];
-  const q = [x1 - rLeft, rRight - x1, y1 - rTop, rBottom - y1];
+  const boundaries: Array<[number, number]> = [
+    [-dx, x1 - rLeft],
+    [dx, rRight - x1],
+    [-dy, y1 - rTop],
+    [dy, rBottom - y1]
+  ];
 
-  for (let i = 0; i < 4; i++) {
-    if (p[i] === 0) {
-      if (q[i] < 0) return null;
+  for (const [p, q] of boundaries) {
+    if (p === 0) {
+      if (q < 0) return null;
     } else {
-      const r = q[i] / p[i];
-      if (p[i] < 0) {
+      const r = q / p;
+      if (p < 0) {
         if (r > t1) return null;
         if (r > t0) t0 = r;
       } else {
@@ -1119,7 +1123,7 @@ const applyCombinedSatellitePass = (doc: Document, force: number, isReplay: bool
 
         for (let i = 0; i < fullText.length; i++) {
           const ch = fullText[i];
-          if (ch === '\n' || ch === '\r' || ch === '\t') continue;
+          if (ch === undefined || ch === '\n' || ch === '\r' || ch === '\t') continue;
 
           try {
             range.setStart(textNode, i);
@@ -1274,7 +1278,7 @@ const applyCombinedSatellitePass = (doc: Document, force: number, isReplay: bool
       edgeGradient.setAttribute('x2', String(segX1 + normalX * 12));
       edgeGradient.setAttribute('y2', String(segY1 + normalY * 12));
 
-      for (const [stopOffset, opacity] of [
+      const gradientStops: Array<[string, string]> = [
         ['0%', '0'],
         ['25%', '0.12'],
         ['40%', '0.7'],
@@ -1282,7 +1286,8 @@ const applyCombinedSatellitePass = (doc: Document, force: number, isReplay: bool
         ['60%', '0.7'],
         ['75%', '0.12'],
         ['100%', '0']
-      ]) {
+      ];
+      for (const [stopOffset, opacity] of gradientStops) {
         const stop = doc.createElementNS('http://www.w3.org/2000/svg', 'stop');
         stop.setAttribute('offset', stopOffset);
         stop.setAttribute('stop-color', '#000000');
