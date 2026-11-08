@@ -13,9 +13,6 @@
         {{ userLat.toFixed(2) }}°N, {{ userLon.toFixed(2) }}°E
       </span>
       <span class="app-header__sep">/</span>
-      <span class="app-header__compass">
-        compass {{ deviceAzimuth }}°
-      </span>
     </div>
 
     <div class="app-header__right">
