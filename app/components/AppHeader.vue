@@ -13,6 +13,9 @@
         {{ userLat.toFixed(2) }}°N, {{ userLon.toFixed(2) }}°E
       </span>
       <span class="app-header__sep">/</span>
+      <span class="app-header__range">
+        RADIUS : {{ attackZoneRangeKm }} KM
+      </span>
     </div>
 
     <div class="app-header__right">
@@ -33,10 +36,6 @@
         </span>
       </div>
       <span v-if="isUsbConnected" class="app-header__sep">/</span>
-
-      <span class="app-header__stat">
-        {{ visibleCount }} satellites overhead
-      </span>
     </div>
   </header>
 </template>
@@ -50,7 +49,7 @@ const props = withDefaults(
     userLat: number;
     userLon: number;
     deviceAzimuth: number;
-    visibleCount: number;
+    attackZoneRangeKm: number;
     isUsbConnected?: boolean;
     isSecondUsbConnected?: boolean;
     usbDevices?: UsbDevice[];
@@ -118,6 +117,7 @@ const usbTooltip = computed<string>(() => {
   }
 
   &__coords,
+  &__range,
   &__compass {
     color: $color-text-muted;
   }
@@ -160,10 +160,6 @@ const usbTooltip = computed<string>(() => {
     font-size: $font-size-xs;
     letter-spacing: 0.05em;
     margin-left: 2px;
-  }
-
-  &__stat {
-    color: $color-text-muted;
   }
 }
 

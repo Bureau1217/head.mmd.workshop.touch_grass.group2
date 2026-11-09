@@ -36,13 +36,18 @@ const COMMERCIAL_CONSTELLATIONS = [
   'SES', 'INTELSAT', 'EUTELSAT', 'INMARSAT', 'O3B'
 ];
 
+const MAP_REFRESH_INTERVAL_MS = 30_000;
+
 type TleLine1 = NonNullable<ConstructorParameters<typeof Satellite>[0]['tle1']>;
 type TleLine2 = NonNullable<ConstructorParameters<typeof Satellite>[0]['tle2']>;
 
 const isTleLine1 = (line: string): line is TleLine1 => line.startsWith('1 ');
 const isTleLine2 = (line: string): line is TleLine2 => line.startsWith('2 ');
 
-const classifySatellites = (data: KeepTrackSatBrief[]): RawSatelliteData[] => {
+const classifySatellites = (data: KeepTrackSatBrief[]): {
+  tracking: RawSatelliteData[];
+  map: RawSatelliteData[];
+} => {
   const scientific: RawSatelliteData[] = [];
   const commercial: RawSatelliteData[] = [];
 
@@ -83,7 +88,10 @@ const classifySatellites = (data: KeepTrackSatBrief[]): RawSatelliteData[] => {
     else commercial.push(satellite);
   }
 
-  return [...scientific.slice(0, 600), ...commercial.slice(0, 400)];
+  return {
+    tracking: [...scientific.slice(0, 600), ...commercial.slice(0, 400)],
+    map: [...scientific, ...commercial]
+  };
 };
 
 export const useSatellites = (
@@ -93,6 +101,7 @@ export const useSatellites = (
 ) => {
   const { public: { proxyUrl } } = useRuntimeConfig();
   const cachedSats = ref<RawSatelliteData[]>([]);
+  const mapCatalogSats = ref<RawSatelliteData[]>([]);
   const closestCommercial = ref<NearestSatellite | null>(null);
   const closestScientific = ref<NearestSatellite | null>(null);
   const visibleSatellites = ref<SatellitePosition[]>([]);
@@ -101,7 +110,7 @@ export const useSatellites = (
   const lastCalculatedAt = ref<Date | null>(null);
 
   // Attack zone: focused overhead range around the user in kilometers
-  const attackZoneRangeKm = ref<number>(1200);
+  const attackZoneRangeKm = ref<number>(800);
 
   // Commercial satellites currently inside the attack zone
   const commercialSatsInZone = ref<SatellitePosition[]>([]);
@@ -126,7 +135,9 @@ export const useSatellites = (
       if (!Array.isArray(data)) {
         throw new TypeError('KeepTrack returned an invalid satellite catalog.');
       }
-      cachedSats.value = classifySatellites(data);
+      const classified = classifySatellites(data);
+      cachedSats.value = classified.tracking;
+      mapCatalogSats.value = classified.map;
     } catch (err: unknown) {
       console.error('[useSatellites] Error fetching satellite catalog:', err);
     } finally {
@@ -160,7 +171,6 @@ export const useSatellites = (
 
     const visibleList: SatellitePosition[] = [];
     const inZoneList: SatellitePosition[] = [];
-    const mapPositions: SatelliteMapPosition[] = [];
 
     for (const satData of cachedSats.value) {
       try {
@@ -172,18 +182,6 @@ export const useSatellites = (
         });
 
         const rae = userLocation?.rae(sat) ?? null;
-        const lla = sat.lla();
-        if (lla && Number.isFinite(lla.lat) && Number.isFinite(lla.lon)) {
-          mapPositions.push({
-            name: satData.name,
-            type: satData.type,
-            purpose: satData.purpose,
-            status: satData.status ?? null,
-            latitude: lla.lat,
-            longitude: lla.lon,
-            distance: rae ? Math.round(rae.rng) : null
-          });
-        }
         if (!userLocation) continue;
 
         if (!rae) continue;
@@ -275,7 +273,6 @@ export const useSatellites = (
     const focusedZoneList = inZoneList.slice(0, 3);
 
     visibleSatellites.value = visibleList;
-    satelliteMapPositions.value = mapPositions;
     commercialSatsInZone.value = focusedZoneList;
     newlyEnteredCommercialSats.value = enteredThisTick;
     closestCommercial.value = nearestComm;
@@ -283,12 +280,55 @@ export const useSatellites = (
     lastCalculatedAt.value = new Date();
   };
 
+  const updateMapPositions = () => {
+    const hasUserLocation = Number.isFinite(userLat.value) && Number.isFinite(userLon.value);
+    const userLocation = hasUserLocation
+      ? new GroundStation({
+          lat: userLat.value as Degrees,
+          lon: userLon.value as Degrees,
+          alt: 0.4 as Kilometers
+        })
+      : null;
+    const mapPositions: SatelliteMapPosition[] = [];
+
+    for (const satData of mapCatalogSats.value) {
+      try {
+        if (!isTleLine1(satData.tle1) || !isTleLine2(satData.tle2)) continue;
+        const sat = new Satellite({
+          name: satData.name,
+          tle1: satData.tle1,
+          tle2: satData.tle2
+        });
+        const lla = sat.lla();
+        if (!lla || !Number.isFinite(lla.lat) || !Number.isFinite(lla.lon)) continue;
+
+        const rae = userLocation?.rae(sat) ?? null;
+        mapPositions.push({
+          name: satData.name,
+          type: satData.type,
+          purpose: satData.purpose,
+          status: satData.status ?? null,
+          latitude: lla.lat,
+          longitude: lla.lon,
+          distance: rae ? Math.round(rae.rng) : null,
+          elevation: rae ? Math.round(rae.el) : null
+        });
+      } catch {
+        // Ignore invalid orbital records while keeping the rest of the map available.
+      }
+    }
+
+    satelliteMapPositions.value = mapPositions;
+  };
+
   let trackingInterval: ReturnType<typeof setInterval> | null = null;
   let catalogRefreshInterval: ReturnType<typeof setInterval> | null = null;
+  let mapRefreshInterval: ReturnType<typeof setInterval> | null = null;
 
   const startTracking = async () => {
     await loadSatelliteCatalog();
     updatePositions();
+    updateMapPositions();
 
     if (!trackingInterval) {
       trackingInterval = setInterval(updatePositions, 3000);
@@ -296,6 +336,10 @@ export const useSatellites = (
 
     if (!catalogRefreshInterval) {
       catalogRefreshInterval = setInterval(loadSatelliteCatalog, 60 * 60 * 1000);
+    }
+
+    if (!mapRefreshInterval) {
+      mapRefreshInterval = setInterval(updateMapPositions, MAP_REFRESH_INTERVAL_MS);
     }
   };
 
@@ -307,6 +351,10 @@ export const useSatellites = (
     if (catalogRefreshInterval) {
       clearInterval(catalogRefreshInterval);
       catalogRefreshInterval = null;
+    }
+    if (mapRefreshInterval) {
+      clearInterval(mapRefreshInterval);
+      mapRefreshInterval = null;
     }
   };
 

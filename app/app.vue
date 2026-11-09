@@ -7,7 +7,7 @@
       :user-lat="userLat"
       :user-lon="userLon"
       :device-azimuth="deviceAzimuth"
-      :visible-count="visibleSatellites.length"
+      :attack-zone-range-km="attackZoneRangeKm"
       :is-usb-connected="isUsbConnected"
       :is-second-usb-connected="isSecondUsbConnected"
       :usb-devices="usbDevices"

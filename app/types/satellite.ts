@@ -32,6 +32,7 @@ export interface SatelliteMapPosition {
   latitude: number;
   longitude: number;
   distance: number | null;
+  elevation: number | null;
 }
 
 export interface NearestSatellite extends SatellitePosition {

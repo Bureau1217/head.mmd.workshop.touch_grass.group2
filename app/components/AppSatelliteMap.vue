@@ -8,7 +8,7 @@
       <header class="app-satellite-map__header">
         <div class="app-satellite-map__heading">
           <strong>Satellite map</strong>
-          <span>{{ satellites.length }} tracked</span>
+          <span>{{ visibleSatellites.length }} in view · {{ satellites.length }} tracked</span>
         </div>
         <button
           type="button"
@@ -44,7 +44,7 @@
           class="app-satellite-map__markers"
           viewBox="0 0 512 512"
           role="img"
-          :aria-label="`${satellites.length} satellite positions and your location`"
+          :aria-label="`${visibleSatellites.length} visible satellite positions and your location`"
         >
           <path
             :d="attackZonePath"
@@ -54,10 +54,9 @@
             <title>Commercial attack zone: {{ attackZoneRangeKm }} km</title>
           </path>
           <g
-            v-for="(satellite, index) in satellites"
+            v-for="(satellite, index) in visibleSatellites"
             :key="`${satellite.name}-${index}`"
             :transform="`translate(${projectPosition(satellite.longitude, satellite.latitude).x} ${projectPosition(satellite.longitude, satellite.latitude).y})`"
-            :display="isVisible(satellite.longitude, satellite.latitude) ? undefined : 'none'"
             class="app-satellite-map__marker-group"
             tabindex="0"
             role="button"
@@ -97,6 +96,10 @@
             Distance:
             {{ hoveredSatellite.distance === null ? '—' : `${hoveredSatellite.distance.toLocaleString()} km` }}
           </span>
+          <span>
+            Elevation:
+            {{ hoveredSatellite.elevation === null ? '—' : `${hoveredSatellite.elevation}° above horizon` }}
+          </span>
         </div>
         <a
           class="app-satellite-map__attribution"
@@ -131,7 +134,7 @@ const emit = defineEmits<{
 
 const hoveredSatellite = ref<SatelliteMapPosition | null>(null);
 
-const zoom = 4;
+const zoom = 5;
 const tileSize = 256;
 const viewportSize = 512;
 
@@ -215,6 +218,10 @@ const isVisible = (longitude: number, latitude: number): boolean => {
   return position.x >= 0 && position.x <= viewportSize
     && position.y >= 0 && position.y <= viewportSize;
 };
+
+const visibleSatellites = computed(() => props.satellites.filter(
+  (satellite) => isVisible(satellite.longitude, satellite.latitude)
+));
 
 const attackZonePath = computed(() => {
   const earthRadiusKm = 6371.0088;
